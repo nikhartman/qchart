@@ -940,37 +940,33 @@ class QchartMain(QMainWindow):
         # go!
         self.listeningThread.start()
 
+
     @Slot(dict)
     def processData(self, data):
 
         dataId = data['id']
 
         if dataId not in self.dataHandlers:
-            logger.debug(f'NEW DATA HANDLER: {dataId}')
             self.dataHandlers[dataId] = DataWindow(dataId=dataId)
             self.dataHandlers[dataId].show()
             self.logger.addMessage(f'Started new data window for {dataId}')
             self.dataHandlers[dataId].windowClosed.connect(self.dataWindowClosed)
 
         w = self.dataHandlers[dataId]
-
-        logger.debug(f'got new data for {dataId}')
         w.addData(data)
-
 
     def closeEvent(self, event):
         self.listener.running = False
         self.listeningThread.quit()
 
-        handlers = [handle for handle in self.dataHandlers.values()]
-        for handler in handlers:
-            handler.close()
+        hs = [h for d, h in self.dataHandlers.items()]
+        for h in hs:
+            h.close()
 
     @Slot(str)
     def dataWindowClosed(self, dataId):
         self.dataHandlers[dataId].close()
         del self.dataHandlers[dataId]
-
 
 def console_entry():
     """
