@@ -20,12 +20,12 @@ import pandas as pd
 import xarray as xr
 
 # Use PySide2 for GUI
-from PySide2.QtCore import (
+from PyQt5.QtCore import (
     QObject, Qt, QThread,
-    Signal, Slot,
+    pyqtSignal, pyqtSlot,
 )
-from PySide2.QtGui import QIcon
-from PySide2.QtWidgets import (
+from PyQt5.QtGui import QIcon
+from PyQt5.QtWidgets import (
     QApplication, QMainWindow,
     QFrame, QPlainTextEdit, QLabel,
     QComboBox, QFormLayout,
@@ -311,7 +311,7 @@ class MPLPlot(FigCanvas):
 
 class DataStructure(QTreeWidget):
 
-    dataUpdated = Signal(dict)
+    dataUpdated = pyqtSignal(dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -321,7 +321,7 @@ class DataStructure(QTreeWidget):
         self.setSelectionMode(QTreeWidget.SingleSelection)
 
 
-    @Slot(dict)
+    @pyqtSlot(dict)
     def update(self, structure):
 
         for n, v in structure.items():
@@ -344,7 +344,7 @@ class DataStructure(QTreeWidget):
 
 class PlotChoice(QWidget):
 
-    choiceUpdated = Signal(object)
+    choiceUpdated = pyqtSignal(object)
 
     def __init__(self, parent=None):
 
@@ -385,15 +385,15 @@ class PlotChoice(QWidget):
         self.subtractAverageButtonGroup.buttonClicked.connect(self.subtractAverageChanged)
 
 
-    @Slot(str)
+    @pyqtSlot(str)
     def xSelected(self, val):
         self.updateOptions(self.xSelection, val)
 
-    @Slot(str)
+    @pyqtSlot(str)
     def ySelected(self, val):
         self.updateOptions(self.ySelection, val)
 
-    @Slot(QAbstractButton)
+    @pyqtSlot(QAbstractButton)
     def subtractAverageChanged(self, button):
         self.updateOptions(None, None)
 
@@ -437,7 +437,7 @@ class PlotChoice(QWidget):
         if self.doEmitChoiceUpdate:
             self.choiceUpdated.emit(self.choiceInfo)
 
-    @Slot(dict)
+    @pyqtSlot(dict)
     def setOptions(self, dataStructure):
         """
         Populates the data choice widgets initially.
@@ -471,7 +471,7 @@ class PlotChoice(QWidget):
 
 class PlotData(QObject):
 
-    dataProcessed = Signal(object, object, object, bool)
+    dataProcessed = pyqtSignal(object, object, object, bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -563,7 +563,7 @@ class PlotData(QObject):
 
 class DataAdder(QObject):
 
-    dataUpdated = Signal(object, dict)
+    dataUpdated = pyqtSignal(object, dict)
 
     def _getDataStructure(self, df):
         ds = {}
@@ -606,9 +606,9 @@ class DataAdder(QObject):
 
 class DataWindow(QMainWindow):
 
-    dataAdded = Signal(dict)
-    dataActivated = Signal(dict)
-    windowClosed = Signal(str)
+    dataAdded = pyqtSignal(dict)
+    dataActivated = pyqtSignal(dict)
+    windowClosed = pyqtSignal(str)
 
     def __init__(self, dataId, parent=None):
         super().__init__(parent)
@@ -674,13 +674,13 @@ class DataWindow(QMainWindow):
         self.setCentralWidget(self.frame)
         self.activateWindow()
 
-    @Slot()
+    @pyqtSlot()
     def activateData(self):
         item = self.structureWidget.selectedItems()[0]
         self.activeDataSet = item.text(0)
         self.dataActivated.emit(self.dataStructure[self.activeDataSet])
 
-    @Slot()
+    @pyqtSlot()
     def updatePlotData(self):
         if self.plotDataThread.isRunning():
             self.pendingPlotData = True
@@ -781,7 +781,7 @@ class DataWindow(QMainWindow):
         self.plot.axes.set_ylabel(self.currentPlotChoiceInfo['yAxis']['name'])
         cb.set_label(self.activeDataSet)
 
-    @Slot(object, object, object, bool)
+    @pyqtSlot(object, object, object, bool)
     def updatePlot(self, data, x, y, grid_found):
         self.plot.clearFig()
 
@@ -844,7 +844,7 @@ class DataWindow(QMainWindow):
                 self.dataAdderThread.start()
                 self.addingQueue = {}
 
-    @Slot(object, dict)
+    @pyqtSlot(object, dict)
     def dataFromAdder(self, data, dataStructure):
         self.data = data
         self.dataStructure = dataStructure
@@ -860,8 +860,8 @@ class DataWindow(QMainWindow):
 
 class DataReceiver(QObject):
 
-    sendInfo = Signal(str)
-    sendData = Signal(dict)
+    sendInfo = pyqtSignal(str)
+    sendData = pyqtSignal(dict)
 
     def __init__(self):
         super().__init__()
@@ -873,7 +873,7 @@ class DataReceiver(QObject):
         self.socket.bind(f"tcp://{addr}:{port}")
         self.running = True
 
-    @Slot()
+    @pyqtSlot()
     def loop(self):
         self.sendInfo.emit("Listening...")
 
@@ -904,7 +904,7 @@ class Logger(QPlainTextEdit):
         super().__init__(parent)
         self.setReadOnly(True)
 
-    @Slot(str)
+    @pyqtSlot(str)
     def addMessage(self, msg):
         newMsg = "{} {}".format(getTimestamp(), msg)
         self.appendPlainText(newMsg)
@@ -944,7 +944,7 @@ class QchartMain(QMainWindow):
         self.listeningThread.start()
 
 
-    @Slot(dict)
+    @pyqtSlot(dict)
     def processData(self, data):
 
         dataId = data['id']
@@ -966,7 +966,7 @@ class QchartMain(QMainWindow):
         for h in hs:
             h.close()
 
-    @Slot(str)
+    @pyqtSlot(str)
     def dataWindowClosed(self, dataId):
         self.dataHandlers[dataId].close()
         del self.dataHandlers[dataId]
