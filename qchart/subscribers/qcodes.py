@@ -9,11 +9,6 @@ from qchart.listener import listener_is_running
 from qchart.config import config
 
 
-# TODO:
-#        MultiParameter support
-#        Array support
-
-
 def _convert_array(text: bytes) -> np.ndarray:
     out = io.BytesIO(text)
     out.seek(0)

@@ -483,20 +483,24 @@ class PlotData(QObject):
     def processData(self):
 
         try:
+
             xarr = dataFrameToXArray(self.df)
-
             data = xarr.values[:]
-            if np.isfinite(data).sum()/data.size < 0.02:
-                # grid is very sparse. don't use it
-                raise ValueError('grid is too sparse')
-            shp = list(data.shape)
 
+            if data.size != 0:
+                filled_elements = np.isfinite(data).sum()
+                total_elements = data.size
+                if filled_elements/total_elements < 0.05:
+                    raise ValueError('grid is too sparse')
+
+
+            data_shape = list(data.shape)
             squeezeExclude = [
                self.choiceInfo['xAxis']['idx'],
                self.choiceInfo['yAxis']['idx'],
             ]
             squeezeDims = tuple(
-                [ i for i in range(len(shp)) if ((i not in squeezeExclude) and (shp[i] == 1)) ]
+                [i for i in range(len(data_shape)) if (i not in squeezeExclude) and (data_shape[i] == 1)]
             )
             plotData = data.squeeze(squeezeDims)
             plotData = np.ma.masked_where(np.isnan(plotData), plotData)
@@ -535,7 +539,6 @@ class PlotData(QObject):
             return
 
         except (ValueError, IndexError):
-
             logger.debug('PlotData.processData: No grid for the data.')
             logger.debug('Fall back to scatter plot')
 
