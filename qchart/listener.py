@@ -40,13 +40,11 @@ def start_listener():
         return
 
     python_path = str(Path(sys.executable))
-    print(f'qchart is using python_path: {python_path}')
 
     qchart_path_parts = PurePath(qchart.__file__).parts[:-2]
     qchart_path_full = str(Path(*qchart_path_parts, 'listener_start.py'))
 
     print(f'starting qchart listener at {qchart_path_full} ...')
-    print(python_path, qchart_path_full)
     subprocess.Popen([python_path, qchart_path_full],
                      shell=True,
                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

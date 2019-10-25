@@ -9,6 +9,6 @@ setup(
         'pandas>=0.22',
         'xarray',
         'simplejson',
-        'pyqt',
+        'pyqt5',
     ],
 )
