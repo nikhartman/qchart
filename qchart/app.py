@@ -2,11 +2,11 @@
 qchart. A simple server application that can plot data streamed through
 network sockets from other processes.
 
-OG author: Wolfgang Pfaff <wolfgangpfff@gmail.com>
+original author: Wolfgang Pfaff <wolfgangpfff@gmail.com>
+qchart maintainer: Nik Hartman
 """
 
 # TO DO:
-#
 # clean up use of logging
 
 import sys
@@ -37,6 +37,7 @@ from PyQt5.QtWidgets import (
 # Embed mpl plots into QT GUI
 import matplotlib
 from matplotlib import rcParams
+from matplotlib.ticker import EngFormatter
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavBar
 from matplotlib.figure import Figure
@@ -99,6 +100,9 @@ def getTimestamp(timeTuple=None):
 
 def getAppTitle():
     return f"{APPTITLE}"
+
+def mpl_formatter():
+    return EngFormatter(places=1, sep=u"")
 
 ### matplotlib tools ###
 
@@ -697,6 +701,8 @@ class DataWindow(QMainWindow):
         marker = '.'
         marker_size = 4
         marker_color = 'k'
+        self.plot.axes.yaxis.set_major_formatter(mpl_formatter())
+
         x = x.flatten() # assume this is cool
         if (len(x)==data.shape[0]) or (len(x)==len(data)):
             self.plot.axes.plot(
@@ -720,13 +726,15 @@ class DataWindow(QMainWindow):
         try:
             xmin, xmax = get_axis_lims(x)
             self.plot.axes.set_xlim(xmin, xmax)
-        except:
-            pass
+        except Exception as e:
+            logger.debug(e)
 
         self.plot.axes.set_xlabel(self.currentPlotChoiceInfo['xAxis']['name'])
         self.plot.axes.set_ylabel(self.activeDataSet)
 
     def _plot1D_scatter(self, x, data):
+
+        self.plot.axes.yaxis.set_major_formatter(mpl_formatter())
 
         x = x.flatten() # assume this is cool
         if (len(x)==data.shape[0]) or (len(x)==len(data)):
@@ -739,14 +747,14 @@ class DataWindow(QMainWindow):
         try:
             xmin, xmax = get_axis_lims(x)
             self.plot.axes.set_xlim(xmin, xmax)
-        except:
-            pass
+        except Exception as e:
+            logger.debug(e)
 
         try:
             ymin, ymax = get_axis_lims(data)
             self.plot.axes.set_ylim(ymin, ymax)
-        except:
-            pass
+        except Exception as e:
+            logger.debug(e)
 
         self.plot.axes.set_xlabel(self.currentPlotChoiceInfo['xAxis']['name'])
         self.plot.axes.set_ylabel(self.activeDataSet)
@@ -760,9 +768,13 @@ class DataWindow(QMainWindow):
         else:
             im = self.plot.axes.pcolormesh(xx, yy, data)
 
-        cb = self.plot.fig.colorbar(im)
         self.plot.axes.set_xlabel(self.currentPlotChoiceInfo['xAxis']['name'])
         self.plot.axes.set_ylabel(self.currentPlotChoiceInfo['yAxis']['name'])
+
+        cb = self.plot.fig.colorbar(
+            im,
+            format=mpl_formatter(),
+        )
         cb.set_label(self.activeDataSet)
 
     def _plot2D_scatter(self, x, y, data):
@@ -773,12 +785,16 @@ class DataWindow(QMainWindow):
             self.plot.axes.set_xlim(xmin, xmax)
             ymin, ymax = get_axis_lims(y)
             self.plot.axes.set_ylim(ymin, ymax)
-        except:
-            pass
+        except Exception as e:
+            logger.debug(e)
 
-        cb = self.plot.fig.colorbar(sc)
         self.plot.axes.set_xlabel(self.currentPlotChoiceInfo['xAxis']['name'])
         self.plot.axes.set_ylabel(self.currentPlotChoiceInfo['yAxis']['name'])
+
+        cb = self.plot.fig.colorbar(
+            im,
+            format=mpl_formatter(),
+        )
         cb.set_label(self.activeDataSet)
 
     @pyqtSlot(object, object, object, bool)
