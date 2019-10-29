@@ -290,12 +290,6 @@ def appendNewData(df1, df2, sortIndex=True):
     return df
 
 
-# def insertNewData(dfFull, df):
-#     idx = dfFull.index.searchsorted(df.index)
-#     dfFull.iloc[idx] = df
-#     return dfFull
-
-
 class MPLPlot(FigCanvas):
 
     def __init__(self, parent=None, width=4, height=3, dpi=150):
@@ -614,11 +608,16 @@ class DataWindow(QMainWindow):
     dataActivated = pyqtSignal(dict)
     windowClosed = pyqtSignal(str)
 
-    def __init__(self, dataId, parent=None):
+    def __init__(self, data_id, parent=None):
         super().__init__(parent)
 
-        self.dataId = dataId
-        self.setWindowTitle(getAppTitle() + f" ({dataId})")
+        self.data_id = data_id
+
+        search_str = 'run ID = '
+        idx = self.data_id.find(search_str) + len(search_str)
+        run_id = int(self.data_id[idx:].strip())
+        self.setWindowTitle(f"{getAppTitle()} (#{run_id})")
+
         self.data = {}     # this is going to be the full dataset
         self.dataStructure = {}
 
@@ -691,7 +690,6 @@ class DataWindow(QMainWindow):
         else:
             self.currentPlotChoiceInfo = self.plotChoice.choiceInfo
             self.pendingPlotData = False
-            # dumpData(self.data)
             self.plotData.setData(self.data[self.activeDataSet], self.currentPlotChoiceInfo)
             self.plotDataThread.start()
 
@@ -704,18 +702,19 @@ class DataWindow(QMainWindow):
         self.plot.axes.yaxis.set_major_formatter(mpl_formatter())
 
         x = x.flatten() # assume this is cool
-        if (len(x)==data.shape[0]) or (len(x)==len(data)):
+        if (len(x) == data.shape[0]) or (len(x) == len(data)):
             self.plot.axes.plot(
                 x, data,
-                marker = marker,
+                marker=marker,
                 markerfacecolor=marker_color,
                 markeredgecolor=marker_color,
                 markersize=marker_size,
                 )
-        elif (len(x)==data.shape[1]):
+        elif len(x) == data.shape[1]:
             self.plot.axes.plot(
-                x, data.transpose(),
-                marker = marker,
+                x,
+                data.transpose(),
+                marker=marker,
                 markerfacecolor=marker_color,
                 markeredgecolor=marker_color,
                 markersize=marker_size,
@@ -737,9 +736,9 @@ class DataWindow(QMainWindow):
         self.plot.axes.yaxis.set_major_formatter(mpl_formatter())
 
         x = x.flatten() # assume this is cool
-        if (len(x)==data.shape[0]) or (len(x)==len(data)):
+        if (len(x) == data.shape[0]) or (len(x) == len(data)):
             self.plot.axes.scatter(x, data)
-        elif (len(x)==data.shape[1]):
+        elif len(x) == data.shape[1]:
             self.plot.axes.scatter(x, data.transpose())
         else:
             raise ValueError('Cannot find a sensible shape for _plot_1D_scatter')
@@ -803,26 +802,24 @@ class DataWindow(QMainWindow):
 
         try:
             pdims = get_plot_dims(data, x, y)
-            if pdims==0:
+            if pdims == 0:
                 raise ValueError('No data sent to DataWindow.updatePlot')
+
+            if grid_found:
+                if pdims == 1:
+                    self._plot1D_line(x, data)
+                elif pdims == 2:
+                    try:
+                        self._plot2D_pcolor(x, y, data)
+                    except Exception as e:
+                        logger.debug('2D plot -- {}'.format(e))
             else:
-                if grid_found:
-                    if pdims==1:
-                        self._plot1D_line(x, data)
-                    elif pdims==2:
-                        try:
-                            self._plot2D_pcolor(x, y, data)
-                        except Exception as e:
-                            logger.debug('2D plot -- {}'.format(e))
-                else:
-                    if pdims==1:
-                        self._plot1D_scatter(x, data)
-                    elif pdims==2:
-                        self._plot2D_scatter(x, y, data)
+                if pdims == 1:
+                    self._plot1D_scatter(x, data)
+                elif pdims == 2:
+                    self._plot2D_scatter(x, y, data)
 
-            idx = self.dataId.find('# run ID') + 2
-            self.plot.axes.set_title("{} [{}]".format(self.dataId[idx:], self.activeDataSet), size='x-small')
-
+            self.plot.axes.set_title(f"{self.data_id}", size='x-small')
             self.plot.draw()
 
         except Exception as e:
@@ -855,7 +852,6 @@ class DataWindow(QMainWindow):
 
             if dataDict != {}:
                 # move data to dataAdder obj and start dataAdderThread
-                # logger.debug('step 2.2 = DataWindow.addData add queued and existing data in dataAdderThread')
                 self.dataAdder.setData(self.data, self.dataStructure, dataDict)
                 self.dataAdderThread.start()
                 self.addingQueue = {}
@@ -871,7 +867,7 @@ class DataWindow(QMainWindow):
 
     # clean-up
     def closeEvent(self, event):
-        self.windowClosed.emit(self.dataId)
+        self.windowClosed.emit(self.data_id)
 
 
 class DataReceiver(QObject):
@@ -899,15 +895,14 @@ class DataReceiver(QObject):
 
             if 'id' in data.keys():
                 # a proper data set requires an 'id'
-                dataId = data['id']
-                self.sendInfo.emit(f'Received data for dataset: {dataId}')
+                data_id = data['id']
+                self.sendInfo.emit(f'Received data for dataset: {data_id}')
                 self.sendData.emit(data)
                 logger.debug(f'\n\t DataReceiver received: {data} \n')
                 continue
             elif 'ping' in data.keys():
                 # so this doesn't look like an error
                 # when checking if the server is running
-                ping = data['ping']
                 self.sendInfo.emit(f'Received ping.')
                 continue
             else:
@@ -921,9 +916,9 @@ class Logger(QPlainTextEdit):
         self.setReadOnly(True)
 
     @pyqtSlot(str)
-    def addMessage(self, msg):
-        newMsg = "{} {}".format(getTimestamp(), msg)
-        self.appendPlainText(newMsg)
+    def addMessage(self, message):
+        fmt_message = "{} {}".format(getTimestamp(), message)
+        self.appendPlainText(fmt_message)
 
 class QchartMain(QMainWindow):
 
@@ -931,7 +926,7 @@ class QchartMain(QMainWindow):
         super().__init__(parent)
 
         self.setWindowTitle(getAppTitle())
-        self.resize ( 900, 300 )
+        self.resize(900, 300)
         self.activateWindow()
 
         # layout of basic widgets
@@ -944,48 +939,48 @@ class QchartMain(QMainWindow):
         self.frame.setFocus()
 
         # basic setup of the data handling
-        self.dataHandlers = {}
+        self.data_handlers = {}
 
         # setting up the ZMQ thread
-        self.listeningThread = QThread()
+        self.listening_thread = QThread()
         self.listener = DataReceiver()
-        self.listener.moveToThread(self.listeningThread)
+        self.listener.moveToThread(self.listening_thread)
 
         # communication with the ZMQ thread
-        self.listeningThread.started.connect(self.listener.loop)
+        self.listening_thread.started.connect(self.listener.loop)
         self.listener.sendInfo.connect(self.logger.addMessage)
         self.listener.sendData.connect(self.processData)
 
         # go!
-        self.listeningThread.start()
+        self.listening_thread.start()
 
 
     @pyqtSlot(dict)
     def processData(self, data):
 
-        dataId = data['id']
+        data_id = data['id']
 
-        if dataId not in self.dataHandlers:
-            self.dataHandlers[dataId] = DataWindow(dataId=dataId)
-            self.dataHandlers[dataId].show()
-            self.logger.addMessage(f'Started new data window for {dataId}')
-            self.dataHandlers[dataId].windowClosed.connect(self.dataWindowClosed)
+        if data_id not in self.data_handlers:
+            self.data_handlers[data_id] = DataWindow(data_id=data_id)
+            self.data_handlers[data_id].show()
+            self.logger.addMessage(f'Started new data window for {data_id}')
+            self.data_handlers[data_id].windowClosed.connect(self.dataWindowClosed)
 
-        w = self.dataHandlers[dataId]
-        w.addData(data)
+        data_window = self.data_handlers[data_id]
+        handler.addData(data)
 
     def closeEvent(self, event):
         self.listener.running = False
-        self.listeningThread.quit()
+        self.listening_thread.quit()
 
-        hs = [h for d, h in self.dataHandlers.items()]
-        for h in hs:
-            h.close()
+        handler_objs = [h for d, h in self.data_handlers.items()]
+        for handler in handler_objs:
+            handler.close()
 
     @pyqtSlot(str)
-    def dataWindowClosed(self, dataId):
-        self.dataHandlers[dataId].close()
-        del self.dataHandlers[dataId]
+    def dataWindowClosed(self, data_id):
+        self.data_handlers[data_id].close()
+        del self.data_handlers[data_id]
 
 def console_entry():
     """

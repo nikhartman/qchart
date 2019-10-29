@@ -34,21 +34,19 @@ class NumpyJSONEncoder(json.JSONEncoder):
         * Other objects which cannot be serialized get converted to their
         string representation (suing the ``str`` function).
         """
-        if isinstance(obj, np.generic) \
-                and not isinstance(obj, np.complexfloating):
+        if isinstance(obj, np.generic) and not isinstance(obj, np.complexfloating):
             # for numpy scalars
             return obj.item()
         elif isinstance(obj, np.ndarray):
             # for numpy arrays
             return obj.tolist()
-        elif (isinstance(obj, numbers.Complex) and
-              not isinstance(obj, numbers.Real)):
+        elif isinstance(obj, numbers.Complex) and not isinstance(obj, numbers.Real):
             return {
-                '__dtype__': 'complex',
-                're': float(obj.real),
-                'im': float(obj.imag)
+                "__dtype__": "complex",
+                "re": float(obj.real),
+                "im": float(obj.imag),
             }
-        elif hasattr(obj, '_JSONEncoder'):
+        elif hasattr(obj, "_JSONEncoder"):
             # Use object's custom JSON encoder
             return obj._JSONEncoder()
         else:
@@ -57,10 +55,10 @@ class NumpyJSONEncoder(json.JSONEncoder):
             except TypeError:
                 # See if the object supports the pickle protocol.
                 # If so, we should be able to use that to serialize.
-                if hasattr(obj, '__getnewargs__'):
+                if hasattr(obj, "__getnewargs__"):
                     return {
-                        '__class__': type(obj).__name__,
-                        '__args__': obj.__getnewargs__()
+                        "__class__": type(obj).__name__,
+                        "__args__": obj.__getnewargs__(),
                     }
                 else:
                     # we cannot convert the object to JSON, just take a string
@@ -69,24 +67,20 @@ class NumpyJSONEncoder(json.JSONEncoder):
 
 
 class DataSender(object):
-
     def __init__(self, dataId):
-        self.data = {
-            'id' : dataId,
-            'datasets' : {},
-        }
+        self.data = {"id": dataId, "datasets": {}}
 
     def send_data(self, timeout=None):
 
         jsData = json.dumps(self.data, allow_nan=True, cls=NumpyJSONEncoder)
-        encData = jsData.encode(encoding='UTF-8')
+        encData = jsData.encode(encoding="UTF-8")
 
-        addr = config['network']['addr']
-        port = config['network']['port']
+        addr = config["network"]["addr"]
+        port = config["network"]["port"]
         srvr = f"tcp://{addr}:{port}"
 
         if timeout is None:
-            timeout = config['client']['send_timeout']
+            timeout = config["client"]["send_timeout"]
 
         context = zmq.Context()
         context.setsockopt(zmq.LINGER, timeout)
@@ -98,5 +92,5 @@ class DataSender(object):
         socket.close()
         context.term()
 
-        if (time.time() - t0) > (timeout / 1000.):
-            print('Timeout during sending!')
+        if (time.time() - t0) > (timeout / 1000.0):
+            print("Timeout during sending!")

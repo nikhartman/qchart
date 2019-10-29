@@ -33,25 +33,20 @@ def get_data_structure(indep_params, meas_params):
     for param in indep_params:
         name = param.name
         unit = param.unit
-        data_struct[name] = {'values' : [], 'unit': unit}
+        data_struct[name] = {"values": [], "unit": unit}
 
     # axes for measured parameters
     axes = [p.name for p in indep_params]
     for param in meas_params:
         name = param.name
         unit = param.unit
-        data_struct[name] = {'values' : [], 'unit' : unit, 'axes' : axes}
+        data_struct[name] = {"values": [], "unit": unit, "axes": axes}
 
     return data_struct
 
 
 class QcodesSubscriber(object):
-
-    def __init__(
-        self,
-        dataset,
-        subscriber_logs=False,
-    ):
+    def __init__(self, dataset, subscriber_logs=False):
 
         # get some run info from the qcodes dataset
         self.ds = dataset
@@ -64,7 +59,10 @@ class QcodesSubscriber(object):
         self.log_id = None
         if subscriber_logs:
             self.log_id = 0
-            self.log_dir = Path(config['logging']['directory'], 'data_sent/run-{}'.format(self.ds.run_id))
+            self.log_dir = Path(
+                config["logging"]["directory"],
+                "data_sent/run-{}".format(self.ds.run_id),
+            )
             self.log_dir.mkdir(parents=True, exist_ok=True)
 
         ### get all of these from dataset ###
@@ -92,29 +90,32 @@ class QcodesSubscriber(object):
         # cannot plot anything for this dataset
         # mark it as useless
         # else: create data structure
-        if (len(self.independ_params) in [1,2]) and (len(self.measured_params)>0):
+        if (len(self.independ_params) in [1, 2]) and (len(self.measured_params) > 0):
             self.data_structure = get_data_structure(
                 self.independ_params, self.measured_params
             )
         else:
             self.data_structure = None
-            warn(f'Cannot create 1 or 2d plots for {self.data_id}')
-
+            warn(f"Cannot create 1 or 2d plots for {self.data_id}")
 
     def _log_data_send(self):
         if self.log_id is not None:
 
-            fp = Path(self.log_dir, 'call-{}.json'.format(self.log_id))
-            with fp.open("w", encoding ="utf-8") as f:
-                json.dump(dict(dataStructure=self.data_structure,
-                               senderDict=self.sender.data),
-                          fp=f, ignore_nan=True, cls=NumpyJSONEncoder)
+            fp = Path(self.log_dir, "call-{}.json".format(self.log_id))
+            with fp.open("w", encoding="utf-8") as f:
+                json.dump(
+                    dict(
+                        dataStructure=self.data_structure, senderDict=self.sender.data
+                    ),
+                    fp=f,
+                    ignore_nan=True,
+                    cls=NumpyJSONEncoder,
+                )
             self.log_id += 1
 
-
     def __call__(self, results, length, state):
-        ''' this function is called by qcodes when new data
-            is written to the dataset/database '''
+        """ this function is called by qcodes when new data
+            is written to the dataset/database """
 
         newData = dict(zip(self.all_param_names, list(zip(*results))))
 
@@ -152,21 +153,21 @@ class QcodesSubscriber(object):
                 for x in v:
                     arr = _convert_array(x)
                     v2 += arr.tolist()
-                data[k]['values'] = v2
+                data[k]["values"] = v2
             else:
                 # reshaping scalar data to match arrays
                 if arrLen is not None:
                     _vals = []
                     for x in v:
                         _vals += [x for i in range(arrLen)]
-                    data[k]['values'] = _vals
+                    data[k]["values"] = _vals
 
                 # scalara data
                 else:
-                    data[k]['values'] = list(v)
+                    data[k]["values"] = list(v)
 
-        self.sender.data['action'] = 'new_data'
-        self.sender.data['datasets'] = data
+        self.sender.data["action"] = "new_data"
+        self.sender.data["datasets"] = data
 
         self.sender.send_data()
         self._log_data_send()
