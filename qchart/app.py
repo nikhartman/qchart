@@ -12,6 +12,8 @@ qchart maintainer: Nik Hartman
 import sys
 import time
 from collections import OrderedDict
+import logging
+from logging.handlers import RotatingFileHandler
 import simplejson as json
 from pathlib import Path
 import zmq
@@ -34,7 +36,6 @@ from PyQt5.QtWidgets import (
     QRadioButton, QButtonGroup, QAbstractButton,
 )
 
-# Embed mpl plots into QT GUI
 import matplotlib
 from matplotlib import rcParams
 from matplotlib.ticker import EngFormatter
@@ -44,51 +45,36 @@ from matplotlib.figure import Figure
 
 from qchart.config import config
 from qchart.client import NumpyJSONEncoder
-import logging
-from logging.handlers import RotatingFileHandler
+
+
+### setup LOGGER ###
 
 
 def get_log_directory():
-    ld = Path(config['logging']['directory'])
-    ld.mkdir(parents=True, exist_ok=True)
-    return ld
+    log_directory = Path(config['logging']['directory'])
+    log_directory.mkdir(parents=True, exist_ok=True)
+    return log_directory
 
-def createLogger():
+def create_logger():
     filename = Path(get_log_directory(), 'plots.log')
-    lh = RotatingFileHandler(filename, maxBytes=1048576, backupCount=5)
-    lh.setFormatter(logging.Formatter( '%(asctime)s %(levelname)s: \
-            %(message)s ' '[in %(pathname)s:%(lineno)d]'))
+    log_handler = RotatingFileHandler(filename, maxBytes=1048576, backupCount=5)
+    log_handler.setFormatter(
+        logging.Formatter(
+            '%(asctime)s %(levelname)s: '
+            '%(message)s '
+            '[in %(pathname)s:%(lineno)d]'
+        )
+    )
     lggr = logging.getLogger('plots')
     lggr.setLevel(logging.getLevelName(config['logging']['level']))
-    lggr.addHandler(lh)
+    lggr.addHandler(log_handler)
     return lggr
 
-logger = createLogger()
-
-
-def dumpData(data):
-
-    jdata = {}
-    for key, df in data.items():
-        jdata[key] = df.to_json(orient='split')
-
-    dtime = int(1000*time.time())
-    fp = Path(get_log_directory(),
-              '{0:d}_{1:s}.json'.format(int(1000*time.time()), 'data'))
-
-    with fp.open("w") as f:
-        json.dump(jdata, fp=f, allow_nan=True, cls=NumpyJSONEncoder)
-
-
-def dump_data_structure(ds):
-    dtime = int(1000*time.time())
-    fp = Path(get_log_directory(),
-              '{0:d}_{1:s}.json'.format(int(1000*time.time()), 'data_struct'))
-    with fp.open("w") as f:
-        json.dump(ds, fp=f, allow_nan=True, cls=NumpyJSONEncoder)
+LOGGER = create_logger()
 
 
 ### app ###
+
 
 APPTITLE = "qchart"
 TIMEFMT = "[%Y-%m-%d %H:%M:%S]"
@@ -101,12 +87,15 @@ def get_time_stamp(timeTuple=None):
 def get_app_title():
     return f"{APPTITLE}"
 
-def mpl_formatter():
-    return EngFormatter(places=1, sep=u"")
 
 ### matplotlib tools ###
 
-def setMplDefaults():
+
+def mpl_formatter():
+    return EngFormatter(places=1, sep=u"")
+
+
+def set_matplotlib_defaults():
 
     # grid
     rcParams['axes.grid'] = True
@@ -135,23 +124,25 @@ def get_plot_dims(data, x, y):
 
     if data is None:
         return 0
-    else:
-        if x is None and y is None:
-            return 0
-        elif x is not None and y is None:
-            return 1
-        elif x is not None and y.size < 2:
-            return 1
-        elif x is not None and y is not None and y.size > 1:
-            return 2
+
+    if x is None and y is None:
+        return 0
+    elif x is not None and y is None:
+        return 1
+    elif x is not None and y.size < 2:
+        return 1
+    elif x is not None and y is not None and y.size > 1:
+        return 2
 
 
 def get_axis_lims(arr):
+
     amin = np.nanmin(arr)
     amax = np.nanmax(arr)
     diff = np.abs(amin-amax)
     vmin = amin - np.abs(0.025*diff)
     vmax = amax + np.abs(0.025*diff)
+
     return vmin, vmax
 
 
@@ -172,51 +163,70 @@ def get_color_lims(data_array, cutoff_percentile=3):
         region limits [vmin, vmax]
     """
 
-    z = data_array.flatten()
+    z_array = data_array.flatten()
     try:
-        zmax = np.nanmax(z)
-        zmin = np.nanmin(z)
+        z_max = np.nanmax(z_array)
+        z_min = np.nanmin(z_array)
     except:
         return -1, 1
 
-    zrange = zmax-zmin
-    pmin, q3, q1, pmax = np.nanpercentile(z,
-                            [cutoff_percentile, 75, 25, 100-cutoff_percentile])
-    IQR = q3-q1
+    z_range = z_max - zmin
+    p_min, third_quarter, first_quarter, p_max = np.nanpercentile(
+        z_array,
+        [cutoff_percentile, 75, 25, 100 - cutoff_percentile]
+    )
+    inner_range = third_quarter - first_quarter
 
     # handle corner case of all data zero, such that IQR is zero
     # to counter numerical artifacts do not test IQR == 0, but IQR on its
     # natural scale (zrange) to be smaller than some very small number.
     # also test for zrange to be 0.0 to avoid division by 0.
     # all This is possibly to careful...
-    if zrange == 0.0 or IQR/zrange < 1e-8:
-        vmin = zmin
-        vmax = zmax
+    if z_range == 0.0 or inner_range/z_range < 1e-8:
+        vmin = z_min
+        vmax = z_max
     else:
-        vmin = max(q1 - 1.5*IQR, zmin)
-        vmax = min(q3 + 1.5*IQR, zmax)
+        vmin = max(q1 - 1.5*inner_range, z_min)
+        vmax = min(q3 + 1.5*inner_range, z_max)
+
         # do not clip more than cutoff_percentile:
-        vmin = min(vmin, pmin)
-        vmax = max(vmax, pmax)
+        vmin = min(vmin, p_min)
+        vmax = max(vmax, p_max)
         return vmin, vmax
 
 
-def centers2edges(arr):
-    e = (arr[1:] + arr[:-1]) / 2.
-    e = np.concatenate(([arr[0] - (e[0] - arr[0])], e))
-    e = np.concatenate((e, [arr[-1] + (arr[-1] - e[-1])]))
-    return e
+def centers_to_edges(arr):
+    edges = (arr[1:] + arr[:-1]) / 2.
+    edges = np.concatenate(([arr[0] - (edges[0] - arr[0])], edges))
+    edges = np.concatenate((edges, [arr[-1] + (arr[-1] - edges[-1])]))
+    return edges
 
 
-def pcolorgrid(xaxis, yaxis):
-    xedges = centers2edges(xaxis)
-    yedges = centers2edges(yaxis)
-    xx, yy = np.meshgrid(xedges, yedges)
-    return xx, yy
+def make_pcolor_grid(x_array, y_array):
+    x_edges = centers_to_edges(x_array)
+    y_edges = centers_to_edges(y_array)
+    x_grid, y_grid = np.meshgrid(x_edges, y_edges)
+    return x_grid, y_grid
 
 
-### structure tools
-def combineDicts(dict1, dict2):
+### structure tools ###
+
+
+def get_data_structure(data_frame):
+    data_struct = {}
+    data_struct['nValues'] = int(data_frame.size)
+    data_struct['axes'] = OrderedDict({})
+
+    for idx_name, idx_level in zip(data_frame.index.names, data_frame.index.levels):
+        data_struct['axes'][idx_name] = {}
+        data_struct['axes'][idx_name]['uniqueValues'] = idx_level.values
+        data_struct['axes'][idx_name]['nValues'] = len(idx_level)
+
+    return data_struct
+
+
+def combine_dicts(dict1, dict2):
+    # only works one level deep
     if dict1 != {}:
         for k in dict1.keys():
             dict1[k]['values'] += dict2[k]['values']
@@ -225,41 +235,41 @@ def combineDicts(dict1, dict2):
         return dict2
 
 
-def dictToDataFrames(dataDict, dropNaN=True, sortIndex=True):
+def dict_to_data_frames(data_dict, drop_nan=True, sort_index=True):
 
     dfs = []
-    for n in dataDict:
-        if 'axes' not in dataDict[n]:
+    for param in data_dict:
+        if 'axes' not in data_dict[param]:
             continue
 
-        vals = np.array(dataDict[n]['values'], dtype=np.float)
+        vals = np.array(data_dict[param]['values'], dtype=np.float)
 
         coord_vals = []
         coord_names = []
-        for a in dataDict[n]['axes']:
-            coord_vals.append(dataDict[a]['values'])
-            m = a
-            unit = dataDict[m].get('unit', '')
+        for axis in data_dict[param]['axes']:
+            coord_vals.append(data_dict[axis]['values'])
+            unit = data_dict[axis].get('unit', '')
+            axis_label = axis
             if unit != '':
-                m += f" ({unit})"
-            coord_names.append(m)
+                axis_label += f" ({unit})"
+            coord_names.append(axis_label)
         coords = list(zip(coord_names, coord_vals))
 
-        mi = pd.MultiIndex.from_tuples(list(zip(*[v for n, v in coords])), names=coord_names)
-
-        name = n
-        unit = dataDict[n].get('unit', '')
+        unit = data_dict[param].get('unit', '')
+        param_label = param
         if unit != '':
-            name += f" ({unit})"
-        df = pd.DataFrame(vals, mi, columns=[name])
+            param_label += f" ({unit})"
 
-        if sortIndex:
-            df = df.sort_index()
+        multi_idx = pd.MultiIndex.from_tuples(list(zip(*[v for n, v in coords])), names=coord_names)
+        param_df = pd.DataFrame(vals, multi_idx, columns=[param_label])
 
-        if dropNaN:
-            dfs.append(df.dropna())
+        if sort_index:
+            param_df = param_df.sort_index()
+
+        if drop_nan:
+            dfs.append(param_df.dropna())
         else:
-            dfs.append(df)
+            dfs.append(param_df)
 
     return dfs
 
@@ -272,20 +282,20 @@ def data_frame_to_xarray(df):
 
     # remove automatically generated indices.
     col_name = list(df.columns)[0]
-    for idxn in arr.indexes:
-        idx = arr.indexes[idxn]
-        if 'dim_' in idxn or idxn == col_name:
+    for xr_idx in arr.indexes:
+        idx = arr.indexes[xr_idx]
+        if 'dim_' in xr_idx or xr_idx == col_name:
             if isinstance(idx, pd.MultiIndex):
-                arr = arr.unstack(idxn)
+                arr = arr.unstack(xr_idx)
             else:
-                arr = arr.squeeze(idxn).drop(idxn)
+                arr = arr.squeeze(xr_idx).drop(xr_idx)
 
     return arr
 
 
-def append_new_data(input_frame_1, input_frame_2, sortIndex=True):
+def append_new_data(input_frame_1, input_frame_2, sort_index=True):
     output_frame = input_frame_1.append(input_frame_2)
-    if sortIndex:
+    if sort_index:
         output_frame = output_frame.sort_index()
     return output_frame
 
@@ -321,16 +331,16 @@ class DataStructure(QTreeWidget):
     @pyqtSlot(dict)
     def update(self, structure):
 
-        for n, v in structure.items():
-            items = self.findItems(n, Qt.MatchExactly)
+        for key, val in structure.items():
+            items = self.findItems(key, Qt.MatchExactly)
             if len(items) == 0:
                 # add a new option to the structure widget
-                item = QTreeWidgetItem([n, '{} points'.format(v['nValues'])])
+                item = QTreeWidgetItem([key, '{} points'.format(val['nValues'])])
                 self.addTopLevelItem(item)
 
             else:
                 item = items[0]
-                item.setText(1, '{} points'.format(v['nValues']))
+                item.setText(1, '{} points'.format(val['nValues']))
 
         current_selection = self.selectedItems()
         if len(current_selection) == 0:
@@ -341,13 +351,12 @@ class DataStructure(QTreeWidget):
 
 class PlotChoice(QWidget):
 
-    choiceUpdated = pyqtSignal(object)
+    choice_updated = pyqtSignal(object)
 
     def __init__(self, parent=None):
 
         super().__init__(parent)
 
-        # self.avgSelection = QComboBox()
         self.x_selection = QComboBox()
         self.y_selection = QComboBox()
 
@@ -363,23 +372,27 @@ class PlotChoice(QWidget):
         self.subtract_avg_button_group.addButton(self.subtract_col_avg_button, 0)
         self.subtract_row_avg_button = QRadioButton('From each row (horizontal axis)')
         self.subtract_avg_button_group.addButton(self.subtract_row_avg_button, 1)
-        self.subtractAverageNoneButton = QRadioButton('None')
-        self.subtract_avg_button_group.addButton(self.subtractAverageNoneButton, 2)
-        self.subtractAverageNoneButton.setChecked(True)
-        self.subtractAverageLayout = QFormLayout()
-        self.subtractAverageLayout.addRow(self.subtract_col_avg_button)
-        self.subtractAverageLayout.addRow(self.subtract_row_avg_button)
-        self.subtractAverageLayout.addRow(self.subtractAverageNoneButton)
-        self.subtract_avg_box.setLayout(self.subtractAverageLayout)
+        self.subtract_avg_none_button = QRadioButton('None')
+        self.subtract_avg_button_group.addButton(self.subtract_avg_none_button, 2)
+        self.subtract_avg_none_button.setChecked(True)
+        self.subtract_avg_layout = QFormLayout()
+        self.subtract_avg_layout.addRow(self.subtract_col_avg_button)
+        self.subtract_avg_layout.addRow(self.subtract_row_avg_button)
+        self.subtract_avg_layout.addRow(self.subtract_avg_none_button)
+        self.subtract_avg_box.setLayout(self.subtract_avg_layout)
 
         main_layout = QVBoxLayout(self)
-        main_layout.addWidget(axisChoiceBox)
+        main_layout.addWidget(axis_choice_box)
         main_layout.addWidget(self.subtract_avg_box)
 
-        self.doEmitChoiceUpdate = False
+        self.emit_choice_update = False
         self.x_selection.currentTextChanged.connect(self.x_selected)
         self.y_selection.currentTextChanged.connect(self.y_selected)
-        self.subtract_avg_button_group.buttonClicked.connect(self.subtractAverageChanged)
+        self.subtract_avg_button_group.buttonClicked.connect(self.subtract_average_changed)
+
+        self.empty_selection_name = '<None>'
+        self.axes_names = []
+        self.choice_info = {}
 
 
     @pyqtSlot(str)
@@ -391,9 +404,8 @@ class PlotChoice(QWidget):
         self.update_options(self.y_selection, val)
 
     @pyqtSlot(QAbstractButton)
-    def subtractAverageChanged(self, button):
+    def subtract_average_changed(self, button):
         self.update_options(None, None)
-
 
     def _axis_in_use(self, name):
         # for opt in self.avgSelection, self.x_selection, self.y_selection:
@@ -402,24 +414,23 @@ class PlotChoice(QWidget):
                 return True
         return False
 
-
-    def update_options(self, changedOption, newVal):
+    def update_options(self, changed_option, new_val):
         """
         After changing the role of a data axis manually, we need to make
         sure this axis isn't used anywhere else.
         """
 
         for opt in self.x_selection, self.y_selection:
-            if opt != changedOption and opt.currentText() == newVal:
+            if opt != changed_option and opt.currentText() == new_val:
                 opt.setCurrentIndex(0)
 
-        subtractAverage = None
+        subtract_average = None
         if self.subtract_row_avg_button.isChecked():
-            subtractAverage = 'byRow'
+            subtract_average = 'byRow'
         elif self.subtract_col_avg_button.isChecked():
-            subtractAverage = 'byColumn'
+            subtract_average = 'byColumn'
 
-        self.choiceInfo = {
+        self.choice_info = {
             'xAxis' : {
                 'idx' : self.x_selection.currentIndex() - 1,
                 'name' : self.x_selection.currentText(),
@@ -428,33 +439,32 @@ class PlotChoice(QWidget):
                 'idx' : self.y_selection.currentIndex() - 1,
                 'name' : self.y_selection.currentText(),
             },
-            'subtractAverage' : subtractAverage,
+            'subtractAverage' : subtract_average,
         }
 
-        if self.doEmitChoiceUpdate:
-            self.choiceUpdated.emit(self.choiceInfo)
+        if self.emit_choice_update:
+            self.choice_updated.emit(self.choice_info)
 
     @pyqtSlot(dict)
-    def setOptions(self, data_struct):
+    def set_options(self, data_struct):
         """
         Populates the data choice widgets initially.
         """
-        self.doEmitChoiceUpdate = False
-        self.axesNames = [ n for n, k in data_struct['axes'].items() ]
+        self.emit_choice_update = False
+        self.axes_names = list(data_struct['axes'].keys())
 
         # Need an option that indicates that the choice is 'empty'
-        self.noSelName = '<None>'
-        while self.noSelName in self.axesNames:
-            self.noSelName = '<' + self.noSelName + '>'
-        self.axesNames.insert(0, self.noSelName)
+        while self.empty_selection_name in self.axes_names:
+            self.empty_selection_name = '<' + self.empty_selection_name + '>'
+        self.axes_names.insert(0, self.empty_selection_name)
 
         # add all options
         for opt in self.x_selection, self.y_selection:
             opt.clear()
-            opt.addItems(self.axesNames)
+            opt.addItems(self.axes_names)
 
         # see which options remain for x and y, apply the first that work
-        xopts = self.axesNames.copy()
+        xopts = self.axes_names.copy()
         xopts.pop(0)
 
         if len(xopts) > 0:
@@ -462,25 +472,21 @@ class PlotChoice(QWidget):
         if len(xopts) > 1:
             self.y_selection.setCurrentText(xopts[1])
 
-        self.doEmitChoiceUpdate = True
-        self.choiceUpdated.emit(self.choiceInfo)
+        self.emit_choice_update = True
+        self.choice_updated.emit(self.choice_info)
 
 
 class PlotData(QObject):
 
     data_processed = pyqtSignal(object, object, object, bool)
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-    def set_data(self, df, choiceInfo):
-        self.df = df
-        self.choiceInfo = choiceInfo
+    def set_data(self, data_frame, choice_info):
+        self.df = data_frame
+        self.choice_info = choice_info
 
     def process_data(self):
 
         try:
-
             xarr = data_frame_to_xarray(self.df)
             data = xarr.values[:]
 
@@ -492,69 +498,69 @@ class PlotData(QObject):
 
 
             data_shape = list(data.shape)
-            squeezeExclude = [
-                self.choiceInfo['xAxis']['idx'],
-                self.choiceInfo['yAxis']['idx'],
+            exclude = [
+                self.choice_info['xAxis']['idx'],
+                self.choice_info['yAxis']['idx'],
             ]
-            squeezeDims = tuple(
-                [i for i in range(len(data_shape)) if (i not in squeezeExclude) and (data_shape[i] == 1)]
+            squeeze_dims = tuple(
+                i for i in range(len(data_shape)) if (i not in exclude) and (data_shape[i] == 1)
             )
-            plot_data = data.squeeze(squeezeDims)
+            plot_data = data.squeeze(squeeze_dims)
             plot_data = np.ma.masked_where(np.isnan(plot_data), plot_data)
 
             if plot_data.size < 1:
-                logger.debug('Data has size 0')
+                LOGGER.debug('Data has size 0')
                 return
 
-            if self.choiceInfo['xAxis']['idx'] > -1:
-                xVals = xarr.coords[self.choiceInfo['xAxis']['name']].values
+            if self.choice_info['xAxis']['idx'] > -1:
+                x_array = xarr.coords[self.choice_info['xAxis']['name']].values
             else:
-                xVals = None
+                x_array = None
 
-            if self.choiceInfo['yAxis']['idx'] > -1:
-                yVals = xarr.coords[self.choiceInfo['yAxis']['name']].values
+            if self.choice_info['yAxis']['idx'] > -1:
+                y_array = xarr.coords[self.choice_info['yAxis']['name']].values
             else:
-                yVals = None
+                y_array = None
 
-            if self.choiceInfo['subtractAverage']:
+            if self.choice_info['subtractAverage']:
                 # This feature is only for 2D data
-                if xVals is not None and yVals is not None:
+                if x_array is not None and y_array is not None:
                     # x axis, horizontal one - axis 0
                     # y axis, vertical one - axis 1
-                    if self.choiceInfo['subtractAverage'] == 'byRow':
+                    if self.choice_info['subtractAverage'] == 'byRow':
                         # rows / x axis / horizontal axis
-                        rowMeans = plot_data.mean(0)
-                        rowMeansMatrix = rowMeans[np.newaxis, :]
-                        plot_data = plot_data - rowMeansMatrix
-                    elif self.choiceInfo['subtractAverage'] == 'byColumn':
+                        row_means = plot_data.mean(0)
+                        row_means_matrix = row_means[np.newaxis, :]
+                        plot_data = plot_data - row_means_matrix
+                    elif self.choice_info['subtractAverage'] == 'byColumn':
                         # columns / y axis / vertical one
-                        columnMeans = plot_data.mean(1)
-                        columnMeansMatrix = columnMeans[:, np.newaxis]
-                        plot_data = plot_data - columnMeansMatrix
+                        col_means = plot_data.mean(1)
+                        col_means_matrix = col_means[:, np.newaxis]
+                        plot_data = plot_data - col_means_matrix
 
-            self.data_processed.emit(plot_data, xVals, yVals, True)
+            self.data_processed.emit(plot_data, x_array, y_array, True)
             return
 
         except (ValueError, IndexError):
-            logger.debug('PlotData.process_data: No grid for the data.')
-            logger.debug('Fall back to scatter plot')
+            LOGGER.debug('PlotData.process_data: No grid for the data.')
+            LOGGER.debug('Fall back to scatter plot')
 
-        if self.choiceInfo['xAxis']['idx'] > -1:
-            xVar = self.choiceInfo['xAxis']['name']
-            xVals = self.df.index.get_level_values(xVar).values
+        if self.choice_info['xAxis']['idx'] > -1:
+            x_label = self.choice_info['xAxis']['name']
+            x_array = self.df.index.get_level_values(x_label).values
         else:
-            xVar = None
-            xVals = None
+            x_label = None
+            x_array = None
 
-        if self.choiceInfo['yAxis']['idx'] > -1:
-            yVar = self.choiceInfo['yAxis']['name']
-            yVals = self.df.index.get_level_values(yVar).values
+        if self.choice_info['yAxis']['idx'] > -1:
+            y_label = self.choice_info['yAxis']['name']
+            y_array = self.df.index.get_level_values(y_label).values
         else:
-            yVar = None
-            yVals = None
+            y_label = None
+            y_array = None
 
         plot_data = self.df.values.flatten()
-        self.data_processed.emit(plot_data, xVals, yVals, False)
+        self.data_processed.emit(plot_data, x_array, y_array, False)
         return
 
 
@@ -562,18 +568,11 @@ class DataAdder(QObject):
 
     data_updated = pyqtSignal(object, dict)
 
-    def _get_data_structure(self, data_frame):
-        data_struct = {}
-        data_struct['nValues'] = int(data_frame.size)
-        data_struct['axes'] = OrderedDict({})
-        # logger.debug(ds['axes'])
-
-        for idx_name, idx_level in zip(data_frame.index.names, data_frame.index.levels):
-            data_struct['axes'][idx_name] = {}
-            data_struct['axes'][idx_name]['uniqueValues'] = idx_level.values
-            data_struct['axes'][idx_name]['nValues'] = len(idx_level)
-
-        return data_struct
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.current_data = None
+        self.current_struct = {}
+        self.new_data_dict = {}
 
     def set_data(self, current_data, current_struct, new_data_dict):
         self.current_data = current_data
@@ -582,9 +581,7 @@ class DataAdder(QObject):
 
     def run(self):
 
-        # logger.debug('step 3.2 = DataAdder.run to add queued data to existing')
-        new_data_frames = dictToDataFrames(self.new_data_dict)
-
+        new_data_frames = dict_to_data_frames(self.new_data_dict)
         data_struct = self.current_struct
         data = {}
 
@@ -593,10 +590,10 @@ class DataAdder(QObject):
 
             if self.current_data == {}:
                 data[col_name] = data_frame
-                data_struct[col_name] = self._get_data_structure(data_frame)
+                data_struct[col_name] = get_data_structure(data_frame)
             elif col_name in self.current_data:
                 data[col_name] = append_new_data(self.current_data[col_name], data_frame)
-                data_struct[col_name] = self._get_data_structure(data[col_name])
+                data_struct[col_name] = get_data_structure(data[col_name])
 
         self.data_updated.emit(data, data_struct)
 
@@ -617,47 +614,47 @@ class DataWindow(QMainWindow):
         run_id = int(self.data_id[idx:].strip())
         self.setWindowTitle(f"{get_app_title()} (#{run_id})")
 
-        self.data = {}     # this is going to be the full dataset
+        self.active_dataset = None
+        self.data = {}
         self.data_struct = {}
-
-        self.addingQueue = {}
-        self.currentlyProcessingPlotData = False
-        self.pendingPlotData = False
+        self.adding_queue = {}
+        self.plot_data_pending = False
+        self.current_plot_choice_info = None
 
         # plot settings
-        setMplDefaults()
+        set_matplotlib_defaults()
 
         # data chosing widgets
         self.structure_widget = DataStructure()
-        self.plotChoice = PlotChoice()
+        self.plot_choice = PlotChoice()
         chooser_layout = QVBoxLayout()
         chooser_layout.addWidget(self.structure_widget)
-        chooser_layout.addWidget(self.plotChoice)
+        chooser_layout.addWidget(self.plot_choice)
 
         # plot control widgets
         self.plot = MPLPlot(width=5, height=4)
-        plotLayout = QVBoxLayout()
-        plotLayout.addWidget(self.plot)
-        plotLayout.addWidget(NavBar(self.plot, self))
+        plot_layout = QVBoxLayout()
+        plot_layout.addWidget(self.plot)
+        plot_layout.addWidget(NavBar(self.plot, self))
 
         # Main layout
         self.frame = QFrame()
         main_layout = QHBoxLayout(self.frame)
         main_layout.addLayout(chooser_layout)
-        main_layout.addLayout(plotLayout)
+        main_layout.addLayout(plot_layout)
 
         # data processing threads
-        self.dataAdder = DataAdder()
+        self.data_adder = DataAdder()
         self.data_adder_thread = QThread()
-        self.dataAdder.moveToThread(self.data_adder_thread)
-        self.dataAdder.data_updated.connect(self.data_from_adder)
-        self.dataAdder.data_updated.connect(self.data_adder_thread.quit)
-        self.data_adder_thread.started.connect(self.dataAdder.run)
+        self.data_adder.moveToThread(self.data_adder_thread)
+        self.data_adder.data_updated.connect(self.data_from_adder)
+        self.data_adder.data_updated.connect(self.data_adder_thread.quit)
+        self.data_adder_thread.started.connect(self.data_adder.run)
 
         self.plot_data = PlotData()
         self.plot_data_thread = QThread()
         self.plot_data.moveToThread(self.plot_data_thread)
-        self.plot_data.data_processed.connect(self.updatePlot)
+        self.plot_data.data_processed.connect(self.update_plot)
         self.plot_data.data_processed.connect(self.plot_data_thread.quit)
         self.plot_data_thread.started.connect(self.plot_data.process_data)
 
@@ -666,9 +663,9 @@ class DataWindow(QMainWindow):
         self.data_added.connect(self.update_plot_data)
 
         self.structure_widget.itemSelectionChanged.connect(self.activate_data)
-        self.data_activated.connect(self.plotChoice.setOptions)
+        self.data_activated.connect(self.plot_choice.set_options)
 
-        self.plotChoice.choiceUpdated.connect(self.update_plot_data)
+        self.plot_choice.choice_updated.connect(self.update_plot_data)
 
         # activate window
         self.frame.setFocus()
@@ -678,21 +675,23 @@ class DataWindow(QMainWindow):
     @pyqtSlot()
     def activate_data(self):
         item = self.structure_widget.selectedItems()[0]
-        self.activeDataSet = item.text(0)
-        self.data_activated.emit(self.data_struct[self.activeDataSet])
+        self.active_dataset = item.text(0)
+        self.data_activated.emit(self.data_struct[self.active_dataset])
 
     @pyqtSlot()
     def update_plot_data(self):
         if self.plot_data_thread.isRunning():
-            self.pendingPlotData = True
+            self.plot_data_pending = True
         else:
-            self.currentPlotChoiceInfo = self.plotChoice.choiceInfo
-            self.pendingPlotData = False
-            self.plot_data.set_data(self.data[self.activeDataSet], self.currentPlotChoiceInfo)
+            self.current_plot_choice_info = self.plot_choice.choice_info
+            self.plot_data_pending = False
+            self.plot_data.set_data(
+                self.data[self.active_dataset],
+                self.current_plot_choice_info
+            )
             self.plot_data_thread.start()
 
-
-    def _plot1D_line(self, x, data):
+    def _plot_1d_line(self, x, data):
 
         marker = '.'
         marker_size = 4
@@ -724,12 +723,12 @@ class DataWindow(QMainWindow):
             xmin, xmax = get_axis_lims(x)
             self.plot.axes.set_xlim(xmin, xmax)
         except Exception as e:
-            logger.debug(e)
+            LOGGER.debug(e)
 
-        self.plot.axes.set_xlabel(self.currentPlotChoiceInfo['xAxis']['name'])
-        self.plot.axes.set_ylabel(self.activeDataSet)
+        self.plot.axes.set_xlabel(self.current_plot_choice_info['xAxis']['name'])
+        self.plot.axes.set_ylabel(self.active_dataset)
 
-    def _plot1D_scatter(self, x, data):
+    def _plot_1d_scatter(self, x, data):
 
         self.plot.axes.yaxis.set_major_formatter(mpl_formatter())
 
@@ -745,114 +744,113 @@ class DataWindow(QMainWindow):
             xmin, xmax = get_axis_lims(x)
             self.plot.axes.set_xlim(xmin, xmax)
         except Exception as e:
-            logger.debug(e)
+            LOGGER.debug(e)
 
         try:
             ymin, ymax = get_axis_lims(data)
             self.plot.axes.set_ylim(ymin, ymax)
         except Exception as e:
-            logger.debug(e)
+            LOGGER.debug(e)
 
-        self.plot.axes.set_xlabel(self.currentPlotChoiceInfo['xAxis']['name'])
-        self.plot.axes.set_ylabel(self.activeDataSet)
+        self.plot.axes.set_xlabel(self.current_plot_choice_info['xAxis']['name'])
+        self.plot.axes.set_ylabel(self.active_dataset)
 
-    def _plot2D_pcolor(self, x, y, data):
+    def _plot_2d_pcolor(self, x, y, data):
 
-        xx, yy = pcolorgrid(x, y)
+        x_grid, y_grid = make_pcolor_grid(x, y)
 
-        if self.currentPlotChoiceInfo['xAxis']['idx'] < self.currentPlotChoiceInfo['yAxis']['idx']:
-            im = self.plot.axes.pcolormesh(xx, yy, data.transpose())
+        if (
+            self.current_plot_choice_info['xAxis']['idx'] <
+            self.current_plot_choice_info['yAxis']['idx']
+        ):
+            img = self.plot.axes.pcolormesh(x_grid, y_grid, data.transpose())
         else:
-            im = self.plot.axes.pcolormesh(xx, yy, data)
+            img = self.plot.axes.pcolormesh(x_grid, y_grid, data)
 
-        self.plot.axes.set_xlabel(self.currentPlotChoiceInfo['xAxis']['name'])
-        self.plot.axes.set_ylabel(self.currentPlotChoiceInfo['yAxis']['name'])
+        self.plot.axes.set_xlabel(self.current_plot_choice_info['xAxis']['name'])
+        self.plot.axes.set_ylabel(self.current_plot_choice_info['yAxis']['name'])
 
-        cb = self.plot.fig.colorbar(
-            im,
+        cbar = self.plot.fig.colorbar(
+            img,
             format=mpl_formatter(),
         )
-        cb.set_label(self.activeDataSet)
+        cbar.set_label(self.active_dataset)
 
-    def _plot2D_scatter(self, x, y, data):
+    def _plot_2d_scatter(self, x, y, data):
 
-        sc = self.plot.axes.scatter(x, y, c=data)
+        img = self.plot.axes.scatter(x, y, c=data)
         try:
             xmin, xmax = get_axis_lims(x)
             self.plot.axes.set_xlim(xmin, xmax)
             ymin, ymax = get_axis_lims(y)
             self.plot.axes.set_ylim(ymin, ymax)
         except Exception as e:
-            logger.debug(e)
+            LOGGER.debug(e)
 
-        self.plot.axes.set_xlabel(self.currentPlotChoiceInfo['xAxis']['name'])
-        self.plot.axes.set_ylabel(self.currentPlotChoiceInfo['yAxis']['name'])
+        self.plot.axes.set_xlabel(self.current_plot_choice_info['xAxis']['name'])
+        self.plot.axes.set_ylabel(self.current_plot_choice_info['yAxis']['name'])
 
-        cb = self.plot.fig.colorbar(
-            im,
+        cbar = self.plot.fig.colorbar(
+            img,
             format=mpl_formatter(),
         )
-        cb.set_label(self.activeDataSet)
+        cbar.set_label(self.active_dataset)
 
     @pyqtSlot(object, object, object, bool)
-    def updatePlot(self, data, x, y, grid_found):
+    def update_plot(self, data, x_array, y_array, grid_found):
         self.plot.clear_figure()
 
         try:
-            pdims = get_plot_dims(data, x, y)
+            pdims = get_plot_dims(data, x_array, y_array)
             if pdims == 0:
-                raise ValueError('No data sent to DataWindow.updatePlot')
+                raise ValueError('No data sent to DataWindow.update_plot')
 
             if grid_found:
                 if pdims == 1:
-                    self._plot1D_line(x, data)
+                    self._plot_1d_line(x_array, data)
                 elif pdims == 2:
-                    try:
-                        self._plot2D_pcolor(x, y, data)
-                    except Exception as e:
-                        logger.debug('2D plot -- {}'.format(e))
+                    self._plot_2d_pcolor(x_array, y_array, data)
             else:
                 if pdims == 1:
-                    self._plot1D_scatter(x, data)
+                    self._plot_1d_scatter(x_array, data)
                 elif pdims == 2:
-                    self._plot2D_scatter(x, y, data)
+                    self._plot_2d_scatter(x_array, y_array, data)
 
             self.plot.axes.set_title(f"{self.data_id}", size='x-small')
             self.plot.draw()
 
         except Exception as e:
-            logging.debug('Could not plot selected data')
-            logging.debug('Exception raised: {}'.format(e))
+            LOGGER.debug('Could not plot selected data')
+            LOGGER.debug(f'Exception raised: {e}')
 
-        if self.pendingPlotData:
+        if self.plot_data_pending:
             self.update_plot_data()
 
-    def addData(self, dataDict):
+    def add_data(self, data_dict):
         """
         Here we receive new data from the listener.
         We'll use a separate thread for processing and combining (numerics might be costly).
         If the thread is already running, we'll put the new data into a queue that will
-        be resolved during the next call of addData (i.e, queue will grow until current
+        be resolved during the next call of add_data (i.e, queue will grow until current
         adding thread is done.)
         """
 
-        dataDict = dataDict.get('datasets', {})
+        data_dict = data_dict.get('datasets', {})
 
         if self.data_adder_thread.isRunning():
-            # logger.debug('step 2.1 = DataWindow.addData add data to queue')
-            if self.addingQueue == {}:
-                self.addingQueue = dataDict
+            if self.adding_queue == {}:
+                self.adding_queue = data_dict
             else:
-                self.addingQueue = combineDicts(self.addingQueue, dataDict)
+                self.adding_queue = combine_dicts(self.adding_queue, data_dict)
         else:
-            if self.addingQueue != {}:
-                dataDict = combineDicts(self.addingQueue, dataDict)
+            if self.adding_queue != {}:
+                data_dict = combine_dicts(self.adding_queue, data_dict)
 
-            if dataDict != {}:
-                # move data to dataAdder obj and start data_adder_thread
-                self.dataAdder.set_data(self.data, self.data_struct, dataDict)
+            if data_dict != {}:
+                # move data to data_adder obj and start data_adder_thread
+                self.data_adder.set_data(self.data, self.data_struct, data_dict)
                 self.data_adder_thread.start()
-                self.addingQueue = {}
+                self.adding_queue = {}
 
     @pyqtSlot(object, dict)
     def data_from_adder(self, data, data_struct):
@@ -867,8 +865,8 @@ class DataWindow(QMainWindow):
 
 class DataReceiver(QObject):
 
-    sendInfo = pyqtSignal(str)
-    sendData = pyqtSignal(dict)
+    send_info = pyqtSignal(str)
+    send_data = pyqtSignal(dict)
 
     def __init__(self):
         super().__init__()
@@ -882,27 +880,28 @@ class DataReceiver(QObject):
 
     @pyqtSlot()
     def loop(self):
-        self.sendInfo.emit("Listening...")
+
+        self.send_info.emit("Listening...")
 
         while self.running:
-            dataBytes = self.socket.recv()
-            data = json.loads(dataBytes.decode(encoding='UTF-8'))
+            data_bytes = self.socket.recv()
+            data = json.loads(data_bytes.decode(encoding='UTF-8'))
 
             if 'id' in data.keys():
                 # a proper data set requires an 'id'
                 data_id = data['id']
-                self.sendInfo.emit(f'Received data for dataset: {data_id}')
-                self.sendData.emit(data)
-                logger.debug(f'\n\t DataReceiver received: {data} \n')
-                continue
+                self.send_info.emit(f'Received data for dataset: {data_id}')
+                self.send_data.emit(data)
+                LOGGER.debug(f'\n\t DataReceiver received: {data} \n')
             elif 'ping' in data.keys():
                 # so this doesn't look like an error
                 # when checking if the server is running
-                self.sendInfo.emit(f'Received ping.')
-                continue
+                self.send_info.emit(f'Received ping.')
             else:
-                self.sendInfo.emit(f'Received invalid message (expected DataDict or ping):\n{data}')
-                continue
+                self.send_info.emit(
+                    f'Received invalid message '
+                    f'(expected DataDict or ping):\n{data}'
+                )
 
 class Logger(QPlainTextEdit):
     '''
@@ -913,8 +912,8 @@ class Logger(QPlainTextEdit):
         self.setReadOnly(True)
 
     @pyqtSlot(str)
-    def addMessage(self, message):
-        fmt_message = "{} {}".format(get_time_stamp(), message)
+    def add_message(self, message):
+        fmt_message = f"{get_time_stamp()} {message}"
         self.appendPlainText(fmt_message)
 
 class QchartMain(QMainWindow):
@@ -948,8 +947,8 @@ class QchartMain(QMainWindow):
 
         # communication with the ZMQ thread
         self.listening_thread.started.connect(self.listener.loop)
-        self.listener.sendInfo.connect(self.logger.addMessage)
-        self.listener.sendData.connect(self.process_data)
+        self.listener.send_info.connect(self.logger.add_message)
+        self.listener.send_data.connect(self.process_data)
 
         # go!
         self.listening_thread.start()
@@ -963,11 +962,11 @@ class QchartMain(QMainWindow):
         if data_id not in self.data_handlers:
             self.data_handlers[data_id] = DataWindow(data_id=data_id)
             self.data_handlers[data_id].show()
-            self.logger.addMessage(f'Started new data window for {data_id}')
+            self.logger.add_message(f'Started new data window for {data_id}')
             self.data_handlers[data_id].windowClosed.connect(self.data_window_closed)
 
         data_window = self.data_handlers[data_id]
-        data_window.addData(data)
+        data_window.add_data(data)
 
     def close_event(self, event):
         self.listener.running = False
@@ -987,7 +986,7 @@ def console_entry():
     Entry point for launching the app from a console script
     """
 
-    logger.debug('Starting qchart...')
+    LOGGER.debug('Starting qchart...')
 
     app = QApplication(sys.argv)
     main = QchartMain()
