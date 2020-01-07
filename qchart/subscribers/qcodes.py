@@ -9,6 +9,22 @@ from qchart.listener import listener_is_running
 from qchart.config import config
 
 
+def add_qcodes_subscriber(current_config):
+    current_config.subscription.subscribers['qchart'] = {
+        'factory': 'qchart.subscribers.QcodesSubscriber',
+        'factory_kwargs': {
+            'subscriber_logs': False,
+        },
+        'subscription_kwargs': {
+            'min_wait': 0,
+            'min_count': 1,
+            'callback_kwargs': {},
+        },
+    }
+
+    current_config.subscription.default_subscribers = ['qchart']
+
+
 def _convert_array(text: bytes) -> np.ndarray:
     out = io.BytesIO(text)
     out.seek(0)
