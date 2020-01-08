@@ -21,13 +21,12 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-# Use PySide2 for GUI
-from PyQt5.QtCore import (
+from qchart.qt_base.QtCore import (
     QObject, Qt, QThread,
     pyqtSignal, pyqtSlot,
 )
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import (
+from qchart.qt_base.QtGui import QIcon
+from qchart.qt_base.QtWidgets import (
     QApplication, QMainWindow,
     QFrame, QPlainTextEdit, QLabel,
     QComboBox, QFormLayout,
