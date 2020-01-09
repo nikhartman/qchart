@@ -4,7 +4,6 @@ import json
 import subprocess
 import sys
 from pathlib import Path, PurePath
-import qchart
 from qchart.config import config
 
 
@@ -43,6 +42,7 @@ def start_listener():
 
     python_path = str(Path(sys.executable))
 
+    import qchart
     qchart_path_parts = PurePath(qchart.__file__).parts[:-2]
     qchart_path_full = str(Path(*qchart_path_parts, "listener_start.py"))
 

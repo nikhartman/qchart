@@ -12,28 +12,11 @@ qchart maintainer: Nik Hartman
 import sys
 import time
 from collections import OrderedDict
-import logging
-from logging.handlers import RotatingFileHandler
 import simplejson as json
-from pathlib import Path
 import zmq
 import numpy as np
 import pandas as pd
 import xarray as xr
-
-from qchart.qt_base.QtCore import (
-    QObject, Qt, QThread,
-    pyqtSignal, pyqtSlot,
-)
-from qchart.qt_base.QtGui import QIcon
-from qchart.qt_base.QtWidgets import (
-    QApplication, QMainWindow,
-    QFrame, QPlainTextEdit, QLabel,
-    QComboBox, QFormLayout,
-    QGroupBox, QHBoxLayout, QVBoxLayout,
-    QWidget, QTreeWidget, QTreeWidgetItem,
-    QRadioButton, QButtonGroup, QAbstractButton,
-)
 
 import matplotlib
 from matplotlib import rcParams
@@ -42,12 +25,14 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavBar
 from matplotlib.figure import Figure
 
+from qchart.qt_base import QtCore, QtGui, QtWidgets, mkQApp
 from qchart.config import config
 from qchart.client import NumpyJSONEncoder
 
-
 ### setup LOGGER ###
-
+import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 def get_log_directory():
     log_directory = Path(config['logging']['directory'])
@@ -55,7 +40,8 @@ def get_log_directory():
     return log_directory
 
 def create_logger():
-    filename = Path(get_log_directory(), 'plots.log')
+    filename = Path(get_log_directory(), 'qchart.log')
+    logger = logging.getLogger(__name__)
     log_handler = RotatingFileHandler(filename, maxBytes=1048576, backupCount=5)
     log_handler.setFormatter(
         logging.Formatter(
@@ -64,16 +50,14 @@ def create_logger():
             '[in %(pathname)s:%(lineno)d]'
         )
     )
-    lggr = logging.getLogger('plots')
-    lggr.setLevel(logging.getLevelName(config['logging']['level']))
-    lggr.addHandler(log_handler)
-    return lggr
+    log_level = logging.getLevelName(config['logging']['level'])
+    logger.setLevel(log_level)
+    logger.addHandler(log_handler)
+    return logger
 
 LOGGER = create_logger()
 
-
-### app ###
-
+### APP ###
 
 APPTITLE = "qchart"
 TIMEFMT = "[%Y-%m-%d %H:%M:%S]"
@@ -315,26 +299,26 @@ class MPLPlot(FigCanvas):
         self.draw()
 
 
-class DataStructure(QTreeWidget):
+class DataStructure(QtWidgets.QTreeWidget):
 
-    data_updated = pyqtSignal(dict)
+    data_updated = QtCore.Signal(dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self.setColumnCount(2)
         self.setHeaderLabels(['Array', 'Properties'])
-        self.setSelectionMode(QTreeWidget.SingleSelection)
+        self.setSelectionMode(QtWidgets.QTreeWidget.SingleSelection)
 
 
-    @pyqtSlot(dict)
+    @QtCore.Slot(dict)
     def update(self, structure):
 
         for key, val in structure.items():
-            items = self.findItems(key, Qt.MatchExactly)
+            items = self.findItems(key, QtCore.Qt.MatchExactly)
             if len(items) == 0:
                 # add a new option to the structure widget
-                item = QTreeWidgetItem([key, '{} points'.format(val['nValues'])])
+                item = QtWidgets.QTreeWidgetItem([key, '{} points'.format(val['nValues'])])
                 self.addTopLevelItem(item)
 
             else:
@@ -348,39 +332,39 @@ class DataStructure(QTreeWidget):
                 item.setSelected(True)
 
 
-class PlotChoice(QWidget):
+class PlotChoice(QtWidgets.QWidget):
 
-    choice_updated = pyqtSignal(object)
+    choice_updated = QtCore.Signal(object)
 
     def __init__(self, parent=None):
 
         super().__init__(parent)
 
-        self.x_selection = QComboBox()
-        self.y_selection = QComboBox()
+        self.x_selection = QtWidgets.QComboBox()
+        self.y_selection = QtWidgets.QComboBox()
 
-        axis_choice_box = QGroupBox('Plot axes')
-        axis_choice_layout = QFormLayout()
-        axis_choice_layout.addRow(QLabel('x axis'), self.x_selection)
-        axis_choice_layout.addRow(QLabel('y axis'), self.y_selection)
+        axis_choice_box = QtWidgets.QGroupBox('Plot axes')
+        axis_choice_layout = QtWidgets.QFormLayout()
+        axis_choice_layout.addRow(QtWidgets.QLabel('x axis'), self.x_selection)
+        axis_choice_layout.addRow(QtWidgets.QLabel('y axis'), self.y_selection)
         axis_choice_box.setLayout(axis_choice_layout)
 
-        self.subtract_avg_box = QGroupBox('Subtract average')
-        self.subtract_avg_button_group = QButtonGroup()
-        self.subtract_col_avg_button = QRadioButton('From each column (vertical axis)')
+        self.subtract_avg_box = QtWidgets.QGroupBox('Subtract average')
+        self.subtract_avg_button_group = QtWidgets.QButtonGroup()
+        self.subtract_col_avg_button = QtWidgets.QRadioButton('From each column (vertical axis)')
         self.subtract_avg_button_group.addButton(self.subtract_col_avg_button, 0)
-        self.subtract_row_avg_button = QRadioButton('From each row (horizontal axis)')
+        self.subtract_row_avg_button = QtWidgets.QRadioButton('From each row (horizontal axis)')
         self.subtract_avg_button_group.addButton(self.subtract_row_avg_button, 1)
-        self.subtract_avg_none_button = QRadioButton('None')
+        self.subtract_avg_none_button = QtWidgets.QRadioButton('None')
         self.subtract_avg_button_group.addButton(self.subtract_avg_none_button, 2)
         self.subtract_avg_none_button.setChecked(True)
-        self.subtract_avg_layout = QFormLayout()
+        self.subtract_avg_layout = QtWidgets.QFormLayout()
         self.subtract_avg_layout.addRow(self.subtract_col_avg_button)
         self.subtract_avg_layout.addRow(self.subtract_row_avg_button)
         self.subtract_avg_layout.addRow(self.subtract_avg_none_button)
         self.subtract_avg_box.setLayout(self.subtract_avg_layout)
 
-        main_layout = QVBoxLayout(self)
+        main_layout = QtWidgets.QVBoxLayout(self)
         main_layout.addWidget(axis_choice_box)
         main_layout.addWidget(self.subtract_avg_box)
 
@@ -394,15 +378,15 @@ class PlotChoice(QWidget):
         self.choice_info = {}
 
 
-    @pyqtSlot(str)
+    @QtCore.Slot(str)
     def x_selected(self, val):
         self.update_options(self.x_selection, val)
 
-    @pyqtSlot(str)
+    @QtCore.Slot(str)
     def y_selected(self, val):
         self.update_options(self.y_selection, val)
 
-    @pyqtSlot(QAbstractButton)
+    @QtCore.Slot(QtWidgets.QAbstractButton)
     def subtract_average_changed(self, button):
         self.update_options(None, None)
 
@@ -444,7 +428,7 @@ class PlotChoice(QWidget):
         if self.emit_choice_update:
             self.choice_updated.emit(self.choice_info)
 
-    @pyqtSlot(dict)
+    @QtCore.Slot(dict)
     def set_options(self, data_struct):
         """
         Populates the data choice widgets initially.
@@ -475,9 +459,9 @@ class PlotChoice(QWidget):
         self.choice_updated.emit(self.choice_info)
 
 
-class PlotData(QObject):
+class PlotData(QtCore.QObject):
 
-    data_processed = pyqtSignal(object, object, object, bool)
+    data_processed = QtCore.Signal(object, object, object, bool)
 
     def set_data(self, data_frame, choice_info):
         self.df = data_frame
@@ -563,9 +547,9 @@ class PlotData(QObject):
         return
 
 
-class DataAdder(QObject):
+class DataAdder(QtCore.QObject):
 
-    data_updated = pyqtSignal(object, dict)
+    data_updated = QtCore.Signal(object, dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -597,11 +581,11 @@ class DataAdder(QObject):
         self.data_updated.emit(data, data_struct)
 
 
-class DataWindow(QMainWindow):
+class DataWindow(QtWidgets.QMainWindow):
 
-    data_added = pyqtSignal(dict)
-    data_activated = pyqtSignal(dict)
-    windowClosed = pyqtSignal(str)
+    data_added = QtCore.Signal(dict)
+    data_activated = QtCore.Signal(dict)
+    windowClosed = QtCore.Signal(str)
 
     def __init__(self, data_id, parent=None):
         super().__init__(parent)
@@ -626,32 +610,32 @@ class DataWindow(QMainWindow):
         # data chosing widgets
         self.structure_widget = DataStructure()
         self.plot_choice = PlotChoice()
-        chooser_layout = QVBoxLayout()
+        chooser_layout = QtWidgets.QVBoxLayout()
         chooser_layout.addWidget(self.structure_widget)
         chooser_layout.addWidget(self.plot_choice)
 
         # plot control widgets
         self.plot = MPLPlot(width=5, height=4)
-        plot_layout = QVBoxLayout()
+        plot_layout = QtWidgets.QVBoxLayout()
         plot_layout.addWidget(self.plot)
         plot_layout.addWidget(NavBar(self.plot, self))
 
         # Main layout
-        self.frame = QFrame()
-        main_layout = QHBoxLayout(self.frame)
+        self.frame = QtWidgets.QFrame()
+        main_layout = QtWidgets.QHBoxLayout(self.frame)
         main_layout.addLayout(chooser_layout)
         main_layout.addLayout(plot_layout)
 
         # data processing threads
         self.data_adder = DataAdder()
-        self.data_adder_thread = QThread()
+        self.data_adder_thread = QtCore.QThread()
         self.data_adder.moveToThread(self.data_adder_thread)
         self.data_adder.data_updated.connect(self.data_from_adder)
         self.data_adder.data_updated.connect(self.data_adder_thread.quit)
         self.data_adder_thread.started.connect(self.data_adder.run)
 
         self.plot_data = PlotData()
-        self.plot_data_thread = QThread()
+        self.plot_data_thread = QtCore.QThread()
         self.plot_data.moveToThread(self.plot_data_thread)
         self.plot_data.data_processed.connect(self.update_plot)
         self.plot_data.data_processed.connect(self.plot_data_thread.quit)
@@ -671,13 +655,13 @@ class DataWindow(QMainWindow):
         self.setCentralWidget(self.frame)
         self.activateWindow()
 
-    @pyqtSlot()
+    @QtCore.Slot()
     def activate_data(self):
         item = self.structure_widget.selectedItems()[0]
         self.active_dataset = item.text(0)
         self.data_activated.emit(self.data_struct[self.active_dataset])
 
-    @pyqtSlot()
+    @QtCore.Slot()
     def update_plot_data(self):
         if self.plot_data_thread.isRunning():
             self.plot_data_pending = True
@@ -795,7 +779,7 @@ class DataWindow(QMainWindow):
         )
         cbar.set_label(self.active_dataset)
 
-    @pyqtSlot(object, object, object, bool)
+    @QtCore.Slot(object, object, object, bool)
     def update_plot(self, data, x_array, y_array, grid_found):
         self.plot.clear_figure()
 
@@ -851,21 +835,22 @@ class DataWindow(QMainWindow):
                 self.data_adder_thread.start()
                 self.adding_queue = {}
 
-    @pyqtSlot(object, dict)
+    @QtCore.Slot(object, dict)
     def data_from_adder(self, data, data_struct):
         self.data = data
         self.data_struct = data_struct
         self.data_added.emit(self.data_struct)
 
     # clean-up
-    def close_event(self, event):
+    def closeEvent(self, event):
+        print(f'close {self.data_id}. event: {event}')
         self.windowClosed.emit(self.data_id)
 
 
-class DataReceiver(QObject):
+class DataReceiver(QtCore.QObject):
 
-    send_info = pyqtSignal(str)
-    send_data = pyqtSignal(dict)
+    send_info = QtCore.Signal(str)
+    send_data = QtCore.Signal(dict)
 
     def __init__(self):
         super().__init__()
@@ -877,7 +862,7 @@ class DataReceiver(QObject):
         self.socket.bind(f"tcp://{addr}:{port}")
         self.running = True
 
-    @pyqtSlot()
+    @QtCore.Slot()
     def loop(self):
 
         self.send_info.emit("Listening...")
@@ -902,7 +887,7 @@ class DataReceiver(QObject):
                     f'(expected DataDict or ping):\n{data}'
                 )
 
-class Logger(QPlainTextEdit):
+class Logger(QtWidgets.QPlainTextEdit):
     '''
         Plain text logger that lives inside the main app window.
     '''
@@ -910,17 +895,20 @@ class Logger(QPlainTextEdit):
         super().__init__(parent)
         self.setReadOnly(True)
 
-    @pyqtSlot(str)
+    @QtCore.Slot(str)
     def add_message(self, message):
         fmt_message = f"{get_time_stamp()} {message}"
         self.appendPlainText(fmt_message)
 
-class QchartMain(QMainWindow):
+class QchartMain(QtWidgets.QMainWindow):
     '''
         Main app window. Includes plain text box for logging
     '''
 
     def __init__(self, parent=None):
+
+        LOGGER.debug('QchartMain opened.')
+
         super().__init__(parent)
 
         self.setWindowTitle(get_app_title())
@@ -929,8 +917,8 @@ class QchartMain(QMainWindow):
 
         # layout of basic widgets
         self.logger = Logger()
-        self.frame = QFrame()
-        layout = QVBoxLayout(self.frame)
+        self.frame = QtWidgets.QFrame()
+        layout = QtWidgets.QVBoxLayout(self.frame)
         layout.addWidget(self.logger)
 
         self.setCentralWidget(self.frame)
@@ -940,7 +928,7 @@ class QchartMain(QMainWindow):
         self.data_handlers = {}
 
         # setting up the ZMQ thread
-        self.listening_thread = QThread()
+        self.listening_thread = QtCore.QThread()
         self.listener = DataReceiver()
         self.listener.moveToThread(self.listening_thread)
 
@@ -953,7 +941,7 @@ class QchartMain(QMainWindow):
         self.listening_thread.start()
 
 
-    @pyqtSlot(dict)
+    @QtCore.Slot(dict)
     def process_data(self, data):
 
         data_id = data['id']
@@ -967,7 +955,7 @@ class QchartMain(QMainWindow):
         data_window = self.data_handlers[data_id]
         data_window.add_data(data)
 
-    def close_event(self, event):
+    def closeEvent(self, event):
         self.listener.running = False
         self.listening_thread.quit()
 
@@ -975,8 +963,9 @@ class QchartMain(QMainWindow):
         for handler in handler_objs:
             handler.close()
 
-    @pyqtSlot(str)
+    @QtCore.Slot(str)
     def data_window_closed(self, data_id):
+        self.logger.add_message(f'Data window closed: {data_id}.')
         self.data_handlers[data_id].close()
         del self.data_handlers[data_id]
 
@@ -987,7 +976,7 @@ def console_entry():
 
     LOGGER.debug('Starting qchart...')
 
-    app = QApplication(sys.argv)
+    app = mkQApp()
     main = QchartMain()
     main.show()
     sys.exit(app.exec_())
