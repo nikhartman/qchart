@@ -843,7 +843,7 @@ class DataWindow(QtWidgets.QMainWindow):
 
     # clean-up
     def closeEvent(self, event):
-        print(f'close {self.data_id}. event: {event}')
+        LOGGER.debug(f'close {self.data_id}. event: {event}')
         self.windowClosed.emit(self.data_id)
 
 
