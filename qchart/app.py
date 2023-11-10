@@ -277,7 +277,7 @@ def data_frame_to_xarray(df):
 
 
 def append_new_data(input_frame_1, input_frame_2, sort_index=True):
-    output_frame = pd.concat([input_frame_1, input_frame_2], ignore_index=True)
+    output_frame = pd.concat([input_frame_1, input_frame_2])
     if sort_index:
         output_frame = output_frame.sort_index()
     return output_frame
@@ -314,6 +314,7 @@ class DataStructure(QtWidgets.QTreeWidget):
     @QtCore.Slot(dict)
     def update(self, structure):
 
+        LOGGER.debug('updating DataStructure')
         for key, val in structure.items():
             items = self.findItems(key, QtCore.Qt.MatchExactly)
             if len(items) == 0:
@@ -577,12 +578,16 @@ class DataAdder(QtCore.QObject):
 
             col_name = list(data_frame.columns)[0]
 
-            if self.current_data == {}:
-                data[col_name] = data_frame
-                data_struct[col_name] = get_data_structure(data_frame)
-            elif col_name in self.current_data:
-                data[col_name] = append_new_data(self.current_data[col_name], data_frame)
-                data_struct[col_name] = get_data_structure(data[col_name])
+            try:
+                if self.current_data == {}:
+                    data[col_name] = data_frame
+                    data_struct[col_name] = get_data_structure(data_frame)
+                elif col_name in self.current_data:
+                    data[col_name] = append_new_data(self.current_data[col_name], data_frame)
+                    data_struct[col_name] = get_data_structure(data[col_name])
+            except Exception as e:
+                LOGGER.debug(e)
+                raise
 
         self.data_updated.emit(data, data_struct)
 
@@ -841,6 +846,7 @@ class DataWindow(QtWidgets.QMainWindow):
 
     @QtCore.Slot(object, dict)
     def data_from_adder(self, data, data_struct):
+        LOGGER.debug('got data from adder')
         self.data = data
         self.data_struct = data_struct
         self.data_added.emit(self.data_struct)
