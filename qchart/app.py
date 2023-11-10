@@ -561,6 +561,7 @@ class DataAdder(QtCore.QObject):
         self.current_data = current_data
         self.current_struct = current_struct
         self.new_data_dict = new_data_dict
+        LOGGER.debug('new data set in adder ...')
 
     def run(self):
 
@@ -592,10 +593,7 @@ class DataWindow(QtWidgets.QMainWindow):
 
         self.data_id = data_id
 
-        search_str = 'run ID = '
-        idx = self.data_id.find(search_str) + len(search_str)
-        run_id = int(self.data_id[idx:].strip())
-        self.setWindowTitle(f"{get_app_title()} (#{run_id})")
+        self.setWindowTitle(data_id)
 
         self.active_dataset = None
         self.data = {}
@@ -820,6 +818,8 @@ class DataWindow(QtWidgets.QMainWindow):
 
         data_dict = data_dict.get('datasets', {})
 
+        LOGGER.debug('adding data to window...')
+
         if self.data_adder_thread.isRunning():
             if self.adding_queue == {}:
                 self.adding_queue = data_dict
@@ -831,9 +831,11 @@ class DataWindow(QtWidgets.QMainWindow):
 
             if data_dict != {}:
                 # move data to data_adder obj and start data_adder_thread
+                LOGGER.debug('moving data to adder thread...')
                 self.data_adder.set_data(self.data, self.data_struct, data_dict)
                 self.data_adder_thread.start()
                 self.adding_queue = {}
+
 
     @QtCore.Slot(object, dict)
     def data_from_adder(self, data, data_struct):
