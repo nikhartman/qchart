@@ -67,11 +67,13 @@ class NumpyJSONEncoder(json.JSONEncoder):
 
 
 class DataSender(object):
-    def __init__(self, dataId):
-        self.data = {"id": dataId, "datasets": {}}
+    def __init__(self, data_id):
+        self.id = data_id
+        self.data = {'id': self.id, 'datasets': {}}
 
-    def send_data(self, timeout=None):
+    def send_data(self, payload, timeout=None):
 
+        self.data['datasets'] = payload
         jsData = json.dumps(self.data, allow_nan=True, cls=NumpyJSONEncoder)
         encData = jsData.encode(encoding="UTF-8")
 
@@ -94,3 +96,5 @@ class DataSender(object):
 
         if (time.time() - t0) > (timeout / 1000.0):
             print("Timeout during sending!")
+
+        self.data['datasets'] = {}
