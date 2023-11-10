@@ -225,7 +225,7 @@ def dict_to_data_frames(data_dict, drop_nan=True, sort_index=True):
         if 'axes' not in data_dict[param]:
             continue
 
-        vals = np.array(data_dict[param]['values'], dtype=np.float)
+        vals = np.array(data_dict[param]['values'], dtype=float)
 
         coord_vals = []
         coord_names = []
@@ -561,15 +561,20 @@ class DataAdder(QtCore.QObject):
         self.current_data = current_data
         self.current_struct = current_struct
         self.new_data_dict = new_data_dict
-        LOGGER.debug('new data set in adder ...')
 
     def run(self):
 
-        new_data_frames = dict_to_data_frames(self.new_data_dict)
+        try:
+            new_data_frames = dict_to_data_frames(self.new_data_dict)
+        except Exception as e:
+            LOGGER.debug(e)
+            raise
+
         data_struct = self.current_struct
         data = {}
 
         for data_frame in new_data_frames:
+
             col_name = list(data_frame.columns)[0]
 
             if self.current_data == {}:
@@ -818,8 +823,6 @@ class DataWindow(QtWidgets.QMainWindow):
 
         data_dict = data_dict.get('datasets', {})
 
-        LOGGER.debug('adding data to window...')
-
         if self.data_adder_thread.isRunning():
             if self.adding_queue == {}:
                 self.adding_queue = data_dict
@@ -831,7 +834,6 @@ class DataWindow(QtWidgets.QMainWindow):
 
             if data_dict != {}:
                 # move data to data_adder obj and start data_adder_thread
-                LOGGER.debug('moving data to adder thread...')
                 self.data_adder.set_data(self.data, self.data_struct, data_dict)
                 self.data_adder_thread.start()
                 self.adding_queue = {}
