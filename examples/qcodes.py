@@ -182,7 +182,6 @@ class QcodesSubscriber(object):
                 else:
                     data[k]["values"] = list(v)
 
-        self.sender.data["action"] = "new_data"
         self.sender.data["datasets"] = data
 
         self.sender.send_data()
