@@ -846,7 +846,6 @@ class DataWindow(QtWidgets.QMainWindow):
 
     @QtCore.Slot(object, dict)
     def data_from_adder(self, data, data_struct):
-        LOGGER.debug('got data from adder')
         self.data = data
         self.data_struct = data_struct
         self.data_added.emit(self.data_struct)
