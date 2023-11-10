@@ -277,7 +277,7 @@ def data_frame_to_xarray(df):
 
 
 def append_new_data(input_frame_1, input_frame_2, sort_index=True):
-    output_frame = input_frame_1.append(input_frame_2)
+    output_frame = pd.concat([input_frame_1, input_frame_2], ignore_index=True)
     if sort_index:
         output_frame = output_frame.sort_index()
     return output_frame
