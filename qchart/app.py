@@ -11,16 +11,12 @@ qchart maintainer: Nik Hartman <NG>
 
 import sys
 import time
-from collections import OrderedDict
+import logging
 import simplejson as json
 import zmq
 import numpy as np
 import pandas as pd
 import xarray as xr
-
-import logging
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
 import matplotlib
 from matplotlib import rcParams
@@ -30,32 +26,9 @@ from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavBar
 from matplotlib.figure import Figure
 
 from qchart.qt_base import QtCore, QtGui, QtWidgets, mkQApp
-from qchart.config import config
 from qchart.client import NumpyJSONEncoder
 
-def get_log_directory():
-    log_directory = Path(config['logging']['directory'])
-    log_directory.mkdir(parents=True, exist_ok=True)
-    return log_directory
-
-def create_logger():
-    # TODO: these file names are not rolling over correctly once the limit is hit
-    filename = Path(get_log_directory(), 'qchart.log')
-    logger = logging.getLogger(__name__)
-    log_handler = RotatingFileHandler(filename, maxBytes=1048576, backupCount=5)
-    log_handler.setFormatter(
-        logging.Formatter(
-            '%(asctime)s %(levelname)s: '
-            '%(message)s '
-            '[in %(pathname)s:%(lineno)d]'
-        )
-    )
-    log_level = logging.getLevelName(config['logging']['level'])
-    logger.setLevel(log_level)
-    logger.addHandler(log_handler)
-    return logger
-
-LOGGER = create_logger()
+LOGGER = logging.getLogger('qchart.app')
 
 ### APP ###
 
@@ -198,7 +171,7 @@ def make_pcolor_grid(x_array, y_array):
 def get_data_structure(data_frame):
     data_struct = {}
     data_struct['nValues'] = int(data_frame.size)
-    data_struct['axes'] = OrderedDict({})
+    data_struct['axes'] = {}
 
     for idx_name, idx_level in zip(data_frame.index.names, data_frame.index.levels):
         data_struct['axes'][idx_name] = {}
@@ -225,7 +198,7 @@ def dict_to_data_frames(data_dict, drop_nan=True, sort_index=True):
         if 'axes' not in data_dict[param]:
             continue
 
-        vals = np.array(data_dict[param]['values'], dtype=float)
+        vals = np.array(data_dict[param]['values'], dtype=float).reshape(-1,)
 
         coord_vals = []
         coord_names = []
@@ -314,7 +287,6 @@ class DataStructure(QtWidgets.QTreeWidget):
     @QtCore.Slot(dict)
     def update(self, structure):
 
-        LOGGER.debug('updating DataStructure')
         for key, val in structure.items():
             items = self.findItems(key, QtCore.Qt.MatchExactly)
             if len(items) == 0:
@@ -565,11 +537,7 @@ class DataAdder(QtCore.QObject):
 
     def run(self):
 
-        try:
-            new_data_frames = dict_to_data_frames(self.new_data_dict)
-        except Exception as e:
-            LOGGER.debug(e)
-            raise
+        new_data_frames = dict_to_data_frames(self.new_data_dict)
 
         data_struct = self.current_struct
         data = {}
@@ -586,7 +554,7 @@ class DataAdder(QtCore.QObject):
                     data[col_name] = append_new_data(self.current_data[col_name], data_frame)
                     data_struct[col_name] = get_data_structure(data[col_name])
             except Exception as e:
-                LOGGER.debug(e)
+                LOGGER.info(e)
                 raise
 
         self.data_updated.emit(data, data_struct)
@@ -714,7 +682,7 @@ class DataWindow(QtWidgets.QMainWindow):
             xmin, xmax = get_axis_lims(x)
             self.plot.axes.set_xlim(xmin, xmax)
         except Exception as e:
-            LOGGER.debug(e)
+            LOGGER.info(e)
 
         self.plot.axes.set_xlabel(self.current_plot_choice_info['xAxis']['name'])
         self.plot.axes.set_ylabel(self.active_dataset)
@@ -735,13 +703,13 @@ class DataWindow(QtWidgets.QMainWindow):
             xmin, xmax = get_axis_lims(x)
             self.plot.axes.set_xlim(xmin, xmax)
         except Exception as e:
-            LOGGER.debug(e)
+            LOGGER.info(e)
 
         try:
             ymin, ymax = get_axis_lims(data)
             self.plot.axes.set_ylim(ymin, ymax)
         except Exception as e:
-            LOGGER.debug(e)
+            LOGGER.info(e)
 
         self.plot.axes.set_xlabel(self.current_plot_choice_info['xAxis']['name'])
         self.plot.axes.set_ylabel(self.active_dataset)
@@ -776,7 +744,7 @@ class DataWindow(QtWidgets.QMainWindow):
             ymin, ymax = get_axis_lims(y)
             self.plot.axes.set_ylim(ymin, ymax)
         except Exception as e:
-            LOGGER.debug(e)
+            LOGGER.info(e)
 
         self.plot.axes.set_xlabel(self.current_plot_choice_info['xAxis']['name'])
         self.plot.axes.set_ylabel(self.current_plot_choice_info['yAxis']['name'])
@@ -811,8 +779,7 @@ class DataWindow(QtWidgets.QMainWindow):
             self.plot.draw()
 
         except Exception as e:
-            LOGGER.debug('Could not plot selected data')
-            LOGGER.debug(f'Exception raised: {e}')
+            LOGGER.info('Could not plot selected data: {e}')
 
         if self.plot_data_pending:
             self.update_plot_data()
@@ -852,7 +819,7 @@ class DataWindow(QtWidgets.QMainWindow):
 
     # clean-up
     def closeEvent(self, event):
-        LOGGER.debug(f'close {self.data_id}. event: {event}')
+        LOGGER.info(f'close {self.data_id}. event: {event}')
         self.windowClosed.emit(self.data_id)
 
 
@@ -916,7 +883,7 @@ class QchartMain(QtWidgets.QMainWindow):
 
     def __init__(self, parent=None):
 
-        LOGGER.debug('QchartMain opened.')
+        LOGGER.info('QchartMain opened.')
 
         super().__init__(parent)
 
@@ -983,7 +950,7 @@ def console_entry():
     Entry point for launching the app from a console script
     """
 
-    LOGGER.debug('Starting qchart...')
+    LOGGER.info('Starting qchart...')
 
     app = mkQApp()
     main = QchartMain()

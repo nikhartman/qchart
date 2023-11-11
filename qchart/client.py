@@ -1,9 +1,11 @@
+import logging
 import zmq
 import simplejson as json
 import time
 import numpy as np
 from qchart.config import config
 
+LOGGER = logging.getLogger('qchart.client')
 
 class NumpyJSONEncoder(json.JSONEncoder):
     """
