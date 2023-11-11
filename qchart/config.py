@@ -4,6 +4,6 @@ config = {
     "data": {},
     "logging": {
         "level": "DEBUG",
-        "directory": "C:\\temp\\.qchart_logs",
+        "directory": "C:\\temp\\qchart_logs",
     },
 }
