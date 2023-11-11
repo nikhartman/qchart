@@ -6,8 +6,9 @@ original author: Wolfgang Pfaff <UIUC>
 qchart maintainer: Nik Hartman <NG>
 """
 
-# TO DO:
-# clean up use of logging
+import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 import sys
 import time
@@ -29,12 +30,30 @@ from qchart.qt_base import QtCore, QtGui, QtWidgets, mkQApp
 from qchart.client import NumpyJSONEncoder
 from qchart.config import config
 
-LOGGER = logging.getLogger('qchart.app')
-
-### APP ###
-
 APPTITLE = "qchart"
 TIMEFMT = "[%Y-%m-%d %H:%M:%S]"
+
+def get_log_directory():
+    log_directory = Path(config['logging']['directory'])
+    log_directory.mkdir(parents=True, exist_ok=True)
+    return log_directory
+
+filename = Path(get_log_directory(), 'qchart.log')
+LOGGER = logging.getLogger('qchart')
+log_handler = RotatingFileHandler(filename, mode='a', 
+    maxBytes=1024*1024, backupCount=5, encoding='utf-8')
+log_handler.setFormatter(
+    logging.Formatter(
+        '%(asctime)s %(levelname)s: '
+        '%(message)s '
+        '[in %(pathname)s:%(lineno)d]'
+    )
+)
+log_level = logging.getLevelName(config['logging']['level'])
+LOGGER.setLevel(log_level)
+LOGGER.addHandler(log_handler)
+
+### APP ###
 
 def get_time_stamp(timeTuple=None):
     if not timeTuple:

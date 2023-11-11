@@ -5,8 +5,6 @@ import time
 import numpy as np
 from qchart.config import config
 
-LOGGER = logging.getLogger('qchart.client')
-
 class NumpyJSONEncoder(json.JSONEncoder):
     """
     This JSON encoder adds support for serializing types that the built-in
