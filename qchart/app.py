@@ -18,6 +18,10 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
 import matplotlib
 from matplotlib import rcParams
 from matplotlib.ticker import EngFormatter
@@ -29,17 +33,13 @@ from qchart.qt_base import QtCore, QtGui, QtWidgets, mkQApp
 from qchart.config import config
 from qchart.client import NumpyJSONEncoder
 
-### setup LOGGER ###
-import logging
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
-
 def get_log_directory():
     log_directory = Path(config['logging']['directory'])
     log_directory.mkdir(parents=True, exist_ok=True)
     return log_directory
 
 def create_logger():
+    # TODO: these file names are not rolling over correctly once the limit is hit
     filename = Path(get_log_directory(), 'qchart.log')
     logger = logging.getLogger(__name__)
     log_handler = RotatingFileHandler(filename, maxBytes=1048576, backupCount=5)

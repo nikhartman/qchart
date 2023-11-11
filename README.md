@@ -1,8 +1,8 @@
 # qchart (live) plotting
 
-A simple GUI tool for plotting measurement data (e.g., for live plotting). It runs as a standalone server, and data can be sent to it via a network socket, which makes it fairly independent of the tools used to measure.
+A simple GUI tool for plotting measurement data (e.g., for live plotting). It runs as a standalone Qt app, and data can be sent to it via a zmq socket, which makes it fairly independent of the tools used to measure.
 
-This is a real bastard version of the work here: https://github.com/data-plottr/plottr/tree/plottr-original It has been stripped down to only live plotting with the minimal number of useful widgets.
+This is a stripped down version of the work here: https://github.com/data-plottr/plottr/tree/plottr-original It contains only live plotting with the minimal number of useful widgets.
 
 ## Installation:
 
