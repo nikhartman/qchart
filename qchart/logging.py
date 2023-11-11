@@ -11,7 +11,7 @@ def get_log_directory():
 filename = Path(get_log_directory(), 'qchart.log')
 logger = logging.getLogger('qchart')
 log_handler = RotatingFileHandler(filename, mode='a', 
-    maxBytes=1024*16, backupCount=10, encoding='utf-8')
+    maxBytes=1024*16, backupCount=5, encoding='utf-8')
 log_handler.setFormatter(
     logging.Formatter(
         '%(asctime)s %(levelname)s: '

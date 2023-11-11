@@ -27,6 +27,7 @@ from matplotlib.figure import Figure
 
 from qchart.qt_base import QtCore, QtGui, QtWidgets, mkQApp
 from qchart.client import NumpyJSONEncoder
+from qchart.config import config
 
 LOGGER = logging.getLogger('qchart.app')
 
@@ -819,7 +820,7 @@ class DataWindow(QtWidgets.QMainWindow):
 
     # clean-up
     def closeEvent(self, event):
-        LOGGER.info(f'close {self.data_id}. event: {event}')
+        LOGGER.info(f'close {self.data_id}.')
         self.windowClosed.emit(self.data_id)
 
 
@@ -926,6 +927,7 @@ class QchartMain(QtWidgets.QMainWindow):
             self.data_handlers[data_id] = DataWindow(data_id=data_id)
             self.data_handlers[data_id].show()
             self.logger.add_message(f'Started new data window for {data_id}')
+            LOGGER.info(f'Started new data window for {data_id}')
             self.data_handlers[data_id].windowClosed.connect(self.data_window_closed)
 
         data_window = self.data_handlers[data_id]
