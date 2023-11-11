@@ -2,8 +2,8 @@
 qchart. A simple server application that can plot data streamed through
 network sockets from other processes.
 
-original author: Wolfgang Pfaff <wolfgangpfff@gmail.com>
-qchart maintainer: Nik Hartman
+original author: Wolfgang Pfaff <UIUC>
+qchart maintainer: Nik Hartman <NG>
 """
 
 # TO DO:

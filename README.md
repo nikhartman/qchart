@@ -15,9 +15,7 @@ This is a stripped down version of the work here: https://github.com/data-plottr
 
 ## Usage:
 * Start the app from your script with `qchart.start_listener()`
-* In your working process (i.e., ipython session, jupyter notebook, ...) use one of the client tools to package the data correctly (or do it yourself) and send it (see examples!).
-* If you're using qcodes with the dataset (v2), there is a subscriber that
-  can be used. See examples.
+* In your working process use DataSender to send data from your client to the plotting tool
 
 # Requirements:
 * python >= 3.6 (f-strings...)
