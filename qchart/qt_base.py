@@ -7,7 +7,7 @@ This module exists to smooth out some of the differences between PySide2 and PyQ
 * Declare QtCore.Signal, .Slot in PyQt5
 * Declare loadUiType function for Pyside2
 
-Stolen from pyqtgraph project
+Lifted from pyqtgraph project
 """
 
 import os, sys, re, time

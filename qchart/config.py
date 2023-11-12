@@ -4,6 +4,6 @@ config = {
     "data": {},
     "logging": {
         "level": "DEBUG",
-        "directory": "C:\\Users\\manfra-lab\\Repos\\qchart\\.logs",
+        "directory": "C:\\temp\\qchart_logs",
     },
 }

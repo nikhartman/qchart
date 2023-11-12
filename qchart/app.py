@@ -2,17 +2,18 @@
 qchart. A simple server application that can plot data streamed through
 network sockets from other processes.
 
-original author: Wolfgang Pfaff <wolfgangpfff@gmail.com>
-qchart maintainer: Nik Hartman
+original author: Wolfgang Pfaff <UIUC>
+qchart maintainer: Nik Hartman <NG>
 """
 
-# TO DO:
-# clean up use of logging
+import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 import sys
 import time
-from collections import OrderedDict
-import simplejson as json
+import logging
+import json
 import zmq
 import numpy as np
 import pandas as pd
@@ -26,41 +27,18 @@ from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavBar
 from matplotlib.figure import Figure
 
 from qchart.qt_base import QtCore, QtGui, QtWidgets, mkQApp
-from qchart.config import config
 from qchart.client import NumpyJSONEncoder
+from qchart.config import config
 
-### setup LOGGER ###
-import logging
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
+APPTITLE = "qchart"
+TIMEFMT = "[%Y-%m-%d %H:%M:%S]"
 
 def get_log_directory():
     log_directory = Path(config['logging']['directory'])
     log_directory.mkdir(parents=True, exist_ok=True)
     return log_directory
 
-def create_logger():
-    filename = Path(get_log_directory(), 'qchart.log')
-    logger = logging.getLogger(__name__)
-    log_handler = RotatingFileHandler(filename, maxBytes=1048576, backupCount=5)
-    log_handler.setFormatter(
-        logging.Formatter(
-            '%(asctime)s %(levelname)s: '
-            '%(message)s '
-            '[in %(pathname)s:%(lineno)d]'
-        )
-    )
-    log_level = logging.getLevelName(config['logging']['level'])
-    logger.setLevel(log_level)
-    logger.addHandler(log_handler)
-    return logger
-
-LOGGER = create_logger()
-
 ### APP ###
-
-APPTITLE = "qchart"
-TIMEFMT = "[%Y-%m-%d %H:%M:%S]"
 
 def get_time_stamp(timeTuple=None):
     if not timeTuple:
@@ -176,6 +154,9 @@ def get_color_lims(data_array, cutoff_percentile=3):
         vmin = min(vmin, p_min)
         vmax = max(vmax, p_max)
         return vmin, vmax
+    
+def isclose(a, b, rel_tol=1e-09, abs_tol=0.0):
+    return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
 
 
 def centers_to_edges(arr):
@@ -198,7 +179,7 @@ def make_pcolor_grid(x_array, y_array):
 def get_data_structure(data_frame):
     data_struct = {}
     data_struct['nValues'] = int(data_frame.size)
-    data_struct['axes'] = OrderedDict({})
+    data_struct['axes'] = {}
 
     for idx_name, idx_level in zip(data_frame.index.names, data_frame.index.levels):
         data_struct['axes'][idx_name] = {}
@@ -212,7 +193,15 @@ def combine_dicts(dict1, dict2):
     # only works one level deep
     if dict1 != {}:
         for k in dict1.keys():
-            dict1[k]['values'] += dict2[k]['values']
+
+            val1 = dict1[k]['values']
+            if not isinstance(val1,list):
+                val1 = [val1]
+            val2 = dict2[k]['values']
+            if not isinstance(val2,list):
+                val2 = [val2]
+
+            dict1[k]['values'] = val1 + val2
         return dict1
     else:
         return dict2
@@ -225,25 +214,24 @@ def dict_to_data_frames(data_dict, drop_nan=True, sort_index=True):
         if 'axes' not in data_dict[param]:
             continue
 
-        vals = np.array(data_dict[param]['values'], dtype=np.float)
+        vals = np.array(data_dict[param]['values'], dtype=float).reshape(-1,) # values for this dependent parameter
 
         coord_vals = []
         coord_names = []
         for axis in data_dict[param]['axes']:
-            coord_vals.append(data_dict[axis]['values'])
+            coord_vals.append(np.array(data_dict[axis]['values'], dtype=float).reshape(-1,))
             unit = data_dict[axis].get('unit', '')
             axis_label = axis
             if unit != '':
                 axis_label += f" ({unit})"
             coord_names.append(axis_label)
-        coords = list(zip(coord_names, coord_vals))
 
         unit = data_dict[param].get('unit', '')
         param_label = param
         if unit != '':
             param_label += f" ({unit})"
 
-        multi_idx = pd.MultiIndex.from_tuples(list(zip(*[v for n, v in coords])), names=coord_names)
+        multi_idx = pd.MultiIndex.from_arrays(coord_vals,names=coord_names)
         param_df = pd.DataFrame(vals, multi_idx, columns=[param_label])
 
         if sort_index:
@@ -253,7 +241,7 @@ def dict_to_data_frames(data_dict, drop_nan=True, sort_index=True):
             dfs.append(param_df.dropna())
         else:
             dfs.append(param_df)
-
+    
     return dfs
 
 
@@ -277,7 +265,7 @@ def data_frame_to_xarray(df):
 
 
 def append_new_data(input_frame_1, input_frame_2, sort_index=True):
-    output_frame = input_frame_1.append(input_frame_2)
+    output_frame = pd.concat([input_frame_1, input_frame_2])
     if sort_index:
         output_frame = output_frame.sort_index()
     return output_frame
@@ -565,18 +553,24 @@ class DataAdder(QtCore.QObject):
     def run(self):
 
         new_data_frames = dict_to_data_frames(self.new_data_dict)
+
         data_struct = self.current_struct
         data = {}
 
         for data_frame in new_data_frames:
+
             col_name = list(data_frame.columns)[0]
 
-            if self.current_data == {}:
-                data[col_name] = data_frame
-                data_struct[col_name] = get_data_structure(data_frame)
-            elif col_name in self.current_data:
-                data[col_name] = append_new_data(self.current_data[col_name], data_frame)
-                data_struct[col_name] = get_data_structure(data[col_name])
+            try:
+                if self.current_data == {}:
+                    data[col_name] = data_frame
+                    data_struct[col_name] = get_data_structure(data_frame)
+                elif col_name in self.current_data:
+                    data[col_name] = append_new_data(self.current_data[col_name], data_frame)
+                    data_struct[col_name] = get_data_structure(data[col_name])
+            except Exception as e:
+                LOGGER.info(e)
+                raise
 
         self.data_updated.emit(data, data_struct)
 
@@ -592,10 +586,7 @@ class DataWindow(QtWidgets.QMainWindow):
 
         self.data_id = data_id
 
-        search_str = 'run ID = '
-        idx = self.data_id.find(search_str) + len(search_str)
-        run_id = int(self.data_id[idx:].strip())
-        self.setWindowTitle(f"{get_app_title()} (#{run_id})")
+        self.setWindowTitle(data_id)
 
         self.active_dataset = None
         self.data = {}
@@ -653,7 +644,12 @@ class DataWindow(QtWidgets.QMainWindow):
         # activate window
         self.frame.setFocus()
         self.setCentralWidget(self.frame)
-        self.activateWindow()
+
+        flags = self.windowFlags()
+        self.setWindowFlags(flags | QtCore.Qt.WindowStaysOnTopHint)
+        self.show()
+        self.setWindowFlags(flags)
+        self.show()
 
     @QtCore.Slot()
     def activate_data(self):
@@ -702,11 +698,12 @@ class DataWindow(QtWidgets.QMainWindow):
         else:
             raise ValueError('Cannot find a sensible shape for _plot_1D_line')
 
-        try:
-            xmin, xmax = get_axis_lims(x)
-            self.plot.axes.set_xlim(xmin, xmax)
-        except Exception as e:
-            LOGGER.debug(e)
+        xmin, xmax = get_axis_lims(x)
+        if isclose(xmin,xmax):
+            delta = abs(0.1*(xmin+xmax)/2)
+            xmin -= delta
+            xmax += delta
+        self.plot.axes.set_xlim(xmin, xmax)
 
         self.plot.axes.set_xlabel(self.current_plot_choice_info['xAxis']['name'])
         self.plot.axes.set_ylabel(self.active_dataset)
@@ -727,13 +724,13 @@ class DataWindow(QtWidgets.QMainWindow):
             xmin, xmax = get_axis_lims(x)
             self.plot.axes.set_xlim(xmin, xmax)
         except Exception as e:
-            LOGGER.debug(e)
+            LOGGER.info(e)
 
         try:
             ymin, ymax = get_axis_lims(data)
             self.plot.axes.set_ylim(ymin, ymax)
         except Exception as e:
-            LOGGER.debug(e)
+            LOGGER.info(e)
 
         self.plot.axes.set_xlabel(self.current_plot_choice_info['xAxis']['name'])
         self.plot.axes.set_ylabel(self.active_dataset)
@@ -768,7 +765,7 @@ class DataWindow(QtWidgets.QMainWindow):
             ymin, ymax = get_axis_lims(y)
             self.plot.axes.set_ylim(ymin, ymax)
         except Exception as e:
-            LOGGER.debug(e)
+            LOGGER.info(e)
 
         self.plot.axes.set_xlabel(self.current_plot_choice_info['xAxis']['name'])
         self.plot.axes.set_ylabel(self.current_plot_choice_info['yAxis']['name'])
@@ -803,8 +800,7 @@ class DataWindow(QtWidgets.QMainWindow):
             self.plot.draw()
 
         except Exception as e:
-            LOGGER.debug('Could not plot selected data')
-            LOGGER.debug(f'Exception raised: {e}')
+            LOGGER.info('Could not plot selected data: {e}')
 
         if self.plot_data_pending:
             self.update_plot_data()
@@ -835,6 +831,7 @@ class DataWindow(QtWidgets.QMainWindow):
                 self.data_adder_thread.start()
                 self.adding_queue = {}
 
+
     @QtCore.Slot(object, dict)
     def data_from_adder(self, data, data_struct):
         self.data = data
@@ -843,7 +840,7 @@ class DataWindow(QtWidgets.QMainWindow):
 
     # clean-up
     def closeEvent(self, event):
-        LOGGER.debug(f'close {self.data_id}. event: {event}')
+        LOGGER.info(f'close {self.data_id}.')
         self.windowClosed.emit(self.data_id)
 
 
@@ -907,7 +904,7 @@ class QchartMain(QtWidgets.QMainWindow):
 
     def __init__(self, parent=None):
 
-        LOGGER.debug('QchartMain opened.')
+        LOGGER.info('QchartMain opened.')
 
         super().__init__(parent)
 
@@ -950,6 +947,7 @@ class QchartMain(QtWidgets.QMainWindow):
             self.data_handlers[data_id] = DataWindow(data_id=data_id)
             self.data_handlers[data_id].show()
             self.logger.add_message(f'Started new data window for {data_id}')
+            LOGGER.info(f'Started new data window for {data_id}')
             self.data_handlers[data_id].windowClosed.connect(self.data_window_closed)
 
         data_window = self.data_handlers[data_id]
@@ -974,7 +972,24 @@ def console_entry():
     Entry point for launching the app from a console script
     """
 
-    LOGGER.debug('Starting qchart...')
+    global LOGGER
+
+    filename = Path(get_log_directory(), 'qchart.log')
+    LOGGER = logging.getLogger('qchart')
+    log_handler = RotatingFileHandler(filename, mode='a', 
+        maxBytes=1024*128, backupCount=5, encoding='utf-8')
+    log_handler.setFormatter(
+        logging.Formatter(
+            '%(asctime)s %(levelname)s: '
+            '%(message)s '
+            '[in %(pathname)s:%(lineno)d]'
+        )
+    )
+    log_level = logging.getLevelName(config['logging']['level'])
+    LOGGER.setLevel(log_level)
+    LOGGER.addHandler(log_handler)
+
+    LOGGER.info('Starting qchart...')
 
     app = mkQApp()
     main = QchartMain()
