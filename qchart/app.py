@@ -13,7 +13,7 @@ from pathlib import Path
 import sys
 import time
 import logging
-import simplejson as json
+import json
 import zmq
 import numpy as np
 import pandas as pd
@@ -154,6 +154,9 @@ def get_color_lims(data_array, cutoff_percentile=3):
         vmin = min(vmin, p_min)
         vmax = max(vmax, p_max)
         return vmin, vmax
+    
+def isclose(a, b, rel_tol=1e-09, abs_tol=0.0):
+    return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
 
 
 def centers_to_edges(arr):
@@ -190,7 +193,15 @@ def combine_dicts(dict1, dict2):
     # only works one level deep
     if dict1 != {}:
         for k in dict1.keys():
-            dict1[k]['values'] += dict2[k]['values']
+
+            val1 = dict1[k]['values']
+            if not isinstance(val1,list):
+                val1 = [val1]
+            val2 = dict2[k]['values']
+            if not isinstance(val2,list):
+                val2 = [val2]
+
+            dict1[k]['values'] = val1 + val2
         return dict1
     else:
         return dict2
@@ -199,7 +210,6 @@ def combine_dicts(dict1, dict2):
 def dict_to_data_frames(data_dict, drop_nan=True, sort_index=True):
 
     dfs = []
-    print(data_dict)
     for param in data_dict:
         if 'axes' not in data_dict[param]:
             continue
@@ -221,7 +231,6 @@ def dict_to_data_frames(data_dict, drop_nan=True, sort_index=True):
         if unit != '':
             param_label += f" ({unit})"
 
-        print(coord_vals)
         multi_idx = pd.MultiIndex.from_arrays(coord_vals,names=coord_names)
         param_df = pd.DataFrame(vals, multi_idx, columns=[param_label])
 
@@ -233,8 +242,6 @@ def dict_to_data_frames(data_dict, drop_nan=True, sort_index=True):
         else:
             dfs.append(param_df)
     
-    print(dfs)
-
     return dfs
 
 
@@ -691,11 +698,12 @@ class DataWindow(QtWidgets.QMainWindow):
         else:
             raise ValueError('Cannot find a sensible shape for _plot_1D_line')
 
-        try:
-            xmin, xmax = get_axis_lims(x)
-            self.plot.axes.set_xlim(xmin, xmax)
-        except Exception as e:
-            LOGGER.info(e)
+        xmin, xmax = get_axis_lims(x)
+        if isclose(xmin,xmax):
+            delta = abs(0.1*(xmin+xmax)/2)
+            xmin -= delta
+            xmax += delta
+        self.plot.axes.set_xlim(xmin, xmax)
 
         self.plot.axes.set_xlabel(self.current_plot_choice_info['xAxis']['name'])
         self.plot.axes.set_ylabel(self.active_dataset)

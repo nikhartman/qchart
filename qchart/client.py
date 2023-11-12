@@ -1,39 +1,44 @@
-import logging
+import json
+import collections
+import numbers
+from typing import Any
 import zmq
-import simplejson as json
 import time
 import numpy as np
 from qchart.config import config
+
+import numpy as np
+
 
 class NumpyJSONEncoder(json.JSONEncoder):
     """
     This JSON encoder adds support for serializing types that the built-in
     ``json`` module does not support out-of-the-box. See the docstring of the
     ``default`` method for the description of all conversions.
-
-    Shamelessly stolen from qcodes.utils.helpers
     """
 
-    def default(self, obj):
+    def default(self, obj: Any) -> Any:
         """
         List of conversions that this encoder performs:
+
         * ``numpy.generic`` (all integer, floating, and other types) gets
-        converted to its python equivalent using its ``item`` method (see
-        ``numpy`` docs for more information,
-        https://docs.scipy.org/doc/numpy/reference/arrays.scalars.html).
+          converted to its python equivalent using its ``item`` method (see
+          ``numpy`` docs for more information,
+          https://docs.scipy.org/doc/numpy/reference/arrays.scalars.html).
         * ``numpy.ndarray`` gets converted to python list using its ``tolist``
-        method.
+          method.
         * Complex number (a number that conforms to ``numbers.Complex`` ABC) gets
-        converted to a dictionary with fields ``re`` and ``im`` containing floating
-        numbers for the real and imaginary parts respectively, and a field
-        ``__dtype__`` containing value ``complex``.
+          converted to a dictionary with fields ``re`` and ``im`` containing floating
+          numbers for the real and imaginary parts respectively, and a field
+          ``__dtype__`` containing value ``complex``.
         * Object with a ``_JSONEncoder`` method get converted the return value of
-        that method.
+          that method.
         * Objects which support the pickle protocol get converted using the
-        data provided by that protocol.
+          data provided by that protocol.
         * Other objects which cannot be serialized get converted to their
-        string representation (suing the ``str`` function).
+          string representation (using the ``str`` function).
         """
+
         if isinstance(obj, np.generic) and not isinstance(obj, np.complexfloating):
             # for numpy scalars
             return obj.item()
@@ -48,22 +53,35 @@ class NumpyJSONEncoder(json.JSONEncoder):
             }
         elif hasattr(obj, "_JSONEncoder"):
             # Use object's custom JSON encoder
-            return obj._JSONEncoder()
+            jsosencode = getattr(obj, "_JSONEncoder")
+            return jsosencode()
         else:
             try:
-                s = super(NumpyJSONEncoder, self).default(obj)
+                s = super().default(obj)
             except TypeError:
+                # json does not support dumping UserDict but
+                # we can dump the dict stored internally in the
+                # UserDict
+                if isinstance(obj, collections.UserDict):
+                    return obj.data
                 # See if the object supports the pickle protocol.
                 # If so, we should be able to use that to serialize.
-                if hasattr(obj, "__getnewargs__"):
+                # __getnewargs__ will return bytes for a bytes object
+                # causing an infinte recursion, so we do not
+                # try to pickle bytes or bytearrays
+                if hasattr(obj, "__getnewargs__") and not isinstance(
+                    obj, (bytes, bytearray)
+                ):
                     return {
                         "__class__": type(obj).__name__,
-                        "__args__": obj.__getnewargs__(),
+                        "__args__": getattr(obj, "__getnewargs__")(),
                     }
                 else:
                     # we cannot convert the object to JSON, just take a string
                     s = str(obj)
             return s
+        
+
 
 
 class DataSender(object):
