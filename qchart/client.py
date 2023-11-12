@@ -70,7 +70,6 @@ class DataSender(object):
     def __init__(self, data_id):
         self.id = data_id
         self.data = {'id': self.id, 'datasets': {}}
-        LOGGER.info(f'DataSender created for: {self.id}')
 
     def send_data(self, payload, timeout=None):
 

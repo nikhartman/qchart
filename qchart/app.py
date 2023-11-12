@@ -38,21 +38,6 @@ def get_log_directory():
     log_directory.mkdir(parents=True, exist_ok=True)
     return log_directory
 
-filename = Path(get_log_directory(), 'qchart.log')
-LOGGER = logging.getLogger('qchart')
-log_handler = RotatingFileHandler(filename, mode='a', 
-    maxBytes=1024*1024, backupCount=5, encoding='utf-8')
-log_handler.setFormatter(
-    logging.Formatter(
-        '%(asctime)s %(levelname)s: '
-        '%(message)s '
-        '[in %(pathname)s:%(lineno)d]'
-    )
-)
-log_level = logging.getLevelName(config['logging']['level'])
-LOGGER.setLevel(log_level)
-LOGGER.addHandler(log_handler)
-
 ### APP ###
 
 def get_time_stamp(timeTuple=None):
@@ -649,7 +634,12 @@ class DataWindow(QtWidgets.QMainWindow):
         # activate window
         self.frame.setFocus()
         self.setCentralWidget(self.frame)
-        self.activateWindow()
+
+        flags = self.windowFlags()
+        self.setWindowFlags(flags | QtCore.Qt.WindowStaysOnTopHint)
+        self.show()
+        self.setWindowFlags(flags)
+        self.show()
 
     @QtCore.Slot()
     def activate_data(self):
@@ -970,6 +960,23 @@ def console_entry():
     """
     Entry point for launching the app from a console script
     """
+
+    global LOGGER
+
+    filename = Path(get_log_directory(), 'qchart.log')
+    LOGGER = logging.getLogger('qchart')
+    log_handler = RotatingFileHandler(filename, mode='a', 
+        maxBytes=1024*128, backupCount=5, encoding='utf-8')
+    log_handler.setFormatter(
+        logging.Formatter(
+            '%(asctime)s %(levelname)s: '
+            '%(message)s '
+            '[in %(pathname)s:%(lineno)d]'
+        )
+    )
+    log_level = logging.getLevelName(config['logging']['level'])
+    LOGGER.setLevel(log_level)
+    LOGGER.addHandler(log_handler)
 
     LOGGER.info('Starting qchart...')
 
