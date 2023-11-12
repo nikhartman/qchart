@@ -199,29 +199,30 @@ def combine_dicts(dict1, dict2):
 def dict_to_data_frames(data_dict, drop_nan=True, sort_index=True):
 
     dfs = []
+    print(data_dict)
     for param in data_dict:
         if 'axes' not in data_dict[param]:
             continue
 
-        vals = np.array(data_dict[param]['values'], dtype=float).reshape(-1,)
+        vals = np.array(data_dict[param]['values'], dtype=float).reshape(-1,) # values for this dependent parameter
 
         coord_vals = []
         coord_names = []
         for axis in data_dict[param]['axes']:
-            coord_vals.append(data_dict[axis]['values'])
+            coord_vals.append(np.array(data_dict[axis]['values'], dtype=float).reshape(-1,))
             unit = data_dict[axis].get('unit', '')
             axis_label = axis
             if unit != '':
                 axis_label += f" ({unit})"
             coord_names.append(axis_label)
-        coords = list(zip(coord_names, coord_vals))
 
         unit = data_dict[param].get('unit', '')
         param_label = param
         if unit != '':
             param_label += f" ({unit})"
 
-        multi_idx = pd.MultiIndex.from_tuples(list(zip(*[v for n, v in coords])), names=coord_names)
+        print(coord_vals)
+        multi_idx = pd.MultiIndex.from_arrays(coord_vals,names=coord_names)
         param_df = pd.DataFrame(vals, multi_idx, columns=[param_label])
 
         if sort_index:
@@ -231,6 +232,8 @@ def dict_to_data_frames(data_dict, drop_nan=True, sort_index=True):
             dfs.append(param_df.dropna())
         else:
             dfs.append(param_df)
+    
+    print(dfs)
 
     return dfs
 
