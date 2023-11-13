@@ -25,7 +25,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavBar
 from matplotlib.figure import Figure
 
-from qchart.qt_base import QtCore, QtWidgets, mkQApp
+from qchart.Qt import QtCore, QtWidgets, mkQApp
 from qchart.config import config
 
 APPTITLE = "qchart"
