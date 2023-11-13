@@ -107,53 +107,54 @@ def get_axis_lims(arr):
     return vmin, vmax
 
 
-def get_color_lims(data_array, cutoff_percentile=3):
-    # stolen from qcodes v0.2
-    """
-    Get the min and max range of the provided array that excludes outliers
-    following the IQR rule.
-    This function computes the inter-quartile-range (IQR), defined by Q3-Q1,
-    i.e. the percentiles for 75% and 25% of the destribution. The region
-    without outliers is defined by [Q1-1.5*IQR, Q3+1.5*IQR].
-    Args:
-        data_array: numpy array of arbitrary dimension containing the
-            statistical data
-        cutoff_percentile: percentile of data that may maximally be clipped
-            on both sides of the distribution.
-    Returns:
-        region limits [vmin, vmax]
-    """
+# def get_color_lims(data_array, cutoff_percentile=3):
+#     # stolen from qcodes v0.2
+#     # TODO: this is handy. clean it up and slot it in.
+#     """
+#     Get the min and max range of the provided array that excludes outliers
+#     following the IQR rule.
+#     This function computes the inter-quartile-range (IQR), defined by Q3-Q1,
+#     i.e. the percentiles for 75% and 25% of the destribution. The region
+#     without outliers is defined by [Q1-1.5*IQR, Q3+1.5*IQR].
+#     Args:
+#         data_array: numpy array of arbitrary dimension containing the
+#             statistical data
+#         cutoff_percentile: percentile of data that may maximally be clipped
+#             on both sides of the distribution.
+#     Returns:
+#         [vmin, vmax]
+#     """
 
-    z_array = data_array.flatten()
-    try:
-        z_max = np.nanmax(z_array)
-        z_min = np.nanmin(z_array)
-    except:
-        return -1, 1
+#     z_array = data_array.flatten()
+#     try:
+#         z_max = np.nanmax(z_array)
+#         z_min = np.nanmin(z_array)
+#     except:
+#         return -1, 1
 
-    z_range = z_max - zmin
-    p_min, third_quarter, first_quarter, p_max = np.nanpercentile(
-        z_array,
-        [cutoff_percentile, 75, 25, 100 - cutoff_percentile]
-    )
-    inner_range = third_quarter - first_quarter
+#     z_range = z_max - zmin
+#     p_min, third_quarter, first_quarter, p_max = np.nanpercentile(
+#         z_array,
+#         [cutoff_percentile, 75, 25, 100 - cutoff_percentile]
+#     )
+#     inner_range = third_quarter - first_quarter
 
-    # handle corner case of all data zero, such that IQR is zero
-    # to counter numerical artifacts do not test IQR == 0, but IQR on its
-    # natural scale (zrange) to be smaller than some very small number.
-    # also test for zrange to be 0.0 to avoid division by 0.
-    # all This is possibly to careful...
-    if z_range == 0.0 or inner_range/z_range < 1e-8:
-        vmin = z_min
-        vmax = z_max
-    else:
-        vmin = max(q1 - 1.5*inner_range, z_min)
-        vmax = min(q3 + 1.5*inner_range, z_max)
+#     # handle corner case of all data zero, such that IQR is zero
+#     # to counter numerical artifacts do not test IQR == 0, but IQR on its
+#     # natural scale (zrange) to be smaller than some very small number.
+#     # also test for zrange to be 0.0 to avoid division by 0.
+#     # all This is possibly to careful...
+#     if z_range == 0.0 or inner_range/z_range < 1e-8:
+#         vmin = z_min
+#         vmax = z_max
+#     else:
+#         vmin = max(q1 - 1.5*inner_range, z_min)
+#         vmax = min(q3 + 1.5*inner_range, z_max)
 
-        # do not clip more than cutoff_percentile:
-        vmin = min(vmin, p_min)
-        vmax = max(vmax, p_max)
-        return vmin, vmax
+#         # do not clip more than cutoff_percentile:
+#         vmin = min(vmin, p_min)
+#         vmax = max(vmax, p_max)
+#         return vmin, vmax
     
 def isclose(a, b, rel_tol=1e-09, abs_tol=0.0):
     return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
@@ -188,20 +189,24 @@ def get_data_structure(data_frame):
 
     return data_struct
 
+def clean_input_values(dd):
+    # quick loop to make all dataset values a consistent numpy array column vector
+    # might be a little slow, but it is at least readable
+    if dd != {}:
+        for k in dd.keys():
+
+            dd[k]['values'] = np.array(dd[k]['values'], dtype=float).reshape(-1,)
+    
+    return dd
+
 
 def combine_dicts(dict1, dict2):
     # only works one level deep
     if dict1 != {}:
         for k in dict1.keys():
 
-            val1 = dict1[k]['values']
-            if not isinstance(val1,list):
-                val1 = [val1]
-            val2 = dict2[k]['values']
-            if not isinstance(val2,list):
-                val2 = [val2]
+            dict1[k]['values'] = np.concatenate((dict1[k]['values'], dict2[k]['values']))
 
-            dict1[k]['values'] = val1 + val2
         return dict1
     else:
         return dict2
@@ -214,12 +219,12 @@ def dict_to_data_frames(data_dict, drop_nan=True, sort_index=True):
         if 'axes' not in data_dict[param]:
             continue
 
-        vals = np.array(data_dict[param]['values'], dtype=float).reshape(-1,) # values for this dependent parameter
+        vals = data_dict[param]['values'] # values for this dependent parameter
 
         coord_vals = []
         coord_names = []
         for axis in data_dict[param]['axes']:
-            coord_vals.append(np.array(data_dict[axis]['values'], dtype=float).reshape(-1,))
+            coord_vals.append(data_dict[axis]['values'])
             unit = data_dict[axis].get('unit', '')
             axis_label = axis
             if unit != '':
@@ -872,8 +877,11 @@ class DataReceiver(QtCore.QObject):
                 # a proper data set requires an 'id'
                 data_id = data['id']
                 self.send_info.emit(f'Received data for dataset: {data_id}')
-                self.send_data.emit(data)
                 LOGGER.debug(f'\n\t DataReceiver received: {data} \n')
+
+                data['datasets'] = clean_input_values(data['datasets'])
+                self.send_data.emit(data)
+
             elif 'ping' in data.keys():
                 # so this doesn't look like an error
                 # when checking if the server is running
@@ -977,7 +985,7 @@ def console_entry():
     filename = Path(get_log_directory(), 'qchart.log')
     LOGGER = logging.getLogger('qchart')
     log_handler = RotatingFileHandler(filename, mode='a', 
-        maxBytes=1024*128, backupCount=5, encoding='utf-8')
+        maxBytes=1024*128, backupCount=3, encoding='utf-8')
     log_handler.setFormatter(
         logging.Formatter(
             '%(asctime)s %(levelname)s: '
