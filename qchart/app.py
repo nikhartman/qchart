@@ -871,8 +871,8 @@ class DataReceiver(QtCore.QObject):
             data_bytes = self.socket.recv()
             data = json.loads(data_bytes.decode(encoding='UTF-8'))
 
-            if 'id' in data.keys():
-                # a proper data set requires an 'id'
+            if ('id' in data.keys()) and ('datasets' in data.keys()):
+                # a proper dataset requires an 'id' and 'datasets'
                 data_id = data['id']
                 self.send_info.emit(f'Received data for dataset: {data_id}')
                 LOGGER.debug(f'\n\t DataReceiver received: {data} \n')
@@ -880,14 +880,16 @@ class DataReceiver(QtCore.QObject):
                 data['datasets'] = clean_input_values(data['datasets'])
                 self.send_data.emit(data)
 
-            elif 'ping' in data.keys():
+            elif list(data.keys()) == ['ping']:
+                # ping contains only a 'ping' key
                 # so this doesn't look like an error
                 # when checking if the server is running
                 self.send_info.emit(f'Received ping.')
             else:
+                # otherwise this is nonsense
                 self.send_info.emit(
                     f'Received invalid message '
-                    f'(expected DataDict or ping):\n{data}'
+                    f'(expected datasets or ping):\n{data}'
                 )
 
 class Logger(QtWidgets.QPlainTextEdit):
