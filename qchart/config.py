@@ -3,7 +3,7 @@ config = {
     "client": {"send_timeout": 1000},
     "data": {},
     "logging": {
-        "level": "DEBUG",
+        "level": "INFO",
         "directory": "C:\\temp\\qchart_logs",
     },
 }
