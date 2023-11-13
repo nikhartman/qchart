@@ -19,15 +19,13 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-import matplotlib
 from matplotlib import rcParams
 from matplotlib.ticker import EngFormatter
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavBar
 from matplotlib.figure import Figure
 
-from qchart.qt_base import QtCore, QtGui, QtWidgets, mkQApp
-from qchart.client import NumpyJSONEncoder
+from qchart.Qt import QtCore, QtWidgets, mkQApp
 from qchart.config import config
 
 APPTITLE = "qchart"
